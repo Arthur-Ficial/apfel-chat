@@ -10,6 +10,8 @@ struct ApfelChatApp: App {
     @State private var settingsVM = SettingsViewModel()
     @State private var serverError: String?
     @State private var isReady = false
+    @State private var controlServer: ChatControlServer?
+    private let enableAPI = CommandLine.arguments.contains("--api")
 
     var body: some Scene {
         WindowGroup {
@@ -127,6 +129,12 @@ struct ApfelChatApp: App {
             self.conversationListVM = listVM
             self.chatVM = chatVM
             self.isReady = true
+
+            if enableAPI {
+                let ctrl = ChatControlServer(chatVM: chatVM, listVM: listVM, settingsVM: settingsVM)
+                ctrl.start()
+                self.controlServer = ctrl
+            }
         } catch {
             serverError = "Database error: \(error.localizedDescription)"
         }

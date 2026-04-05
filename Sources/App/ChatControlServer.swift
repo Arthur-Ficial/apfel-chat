@@ -1,0 +1,368 @@
+import Foundation
+
+@MainActor
+class ChatControlServer {
+    let chatVM: ChatViewModel
+    let listVM: ConversationListViewModel
+    let settingsVM: SettingsViewModel
+    private var serverTask: Task<Void, Never>?
+
+    static nonisolated let port: UInt16 = 11441
+
+    init(chatVM: ChatViewModel, listVM: ConversationListViewModel, settingsVM: SettingsViewModel) {
+        self.chatVM = chatVM
+        self.listVM = listVM
+        self.settingsVM = settingsVM
+    }
+
+    func start() {
+        let chat = chatVM
+        let list = listVM
+        let settings = settingsVM
+        let p = Self.port
+        serverTask = Task.detached {
+            guard let listener = createControlListenerSocket(port: p) else {
+                printToStderr("API: failed to start on port \(p)")
+                return
+            }
+            printToStderr("API: http://127.0.0.1:\(p)")
+
+            while true {
+                guard let client = try? await acceptControlSocket(listener) else { continue }
+                Task.detached {
+                    await Self.handleConnection(client, chatVM: chat, listVM: list, settingsVM: settings)
+                }
+            }
+        }
+    }
+
+    nonisolated private static func handleConnection(_ client: Int32, chatVM: ChatViewModel, listVM: ConversationListViewModel, settingsVM: SettingsViewModel) async {
+        var buffer = [UInt8](repeating: 0, count: 16384)
+        let n = read(client, &buffer, buffer.count)
+        guard n > 0 else { close(client); return }
+        let request = String(bytes: buffer[0..<n], encoding: .utf8) ?? ""
+
+        let firstLine = request.split(separator: "\r\n").first ?? ""
+        let parts = firstLine.split(separator: " ")
+        guard parts.count >= 2 else { close(client); return }
+        let method = String(parts[0])
+        let fullPath = String(parts[1])
+
+        // Parse path and query
+        let pathComponents = fullPath.split(separator: "?", maxSplits: 1)
+        let path = String(pathComponents[0])
+        let queryString = pathComponents.count > 1 ? String(pathComponents[1]) : ""
+
+        let body: String
+        if let bodyStart = request.range(of: "\r\n\r\n") {
+            body = String(request[bodyStart.upperBound...])
+        } else {
+            body = ""
+        }
+
+        let response: String
+        switch (method, path) {
+
+        // === STATE ===
+        case ("GET", "/state"):
+            response = await getState(chatVM, listVM: listVM)
+
+        // === CONVERSATIONS ===
+        case ("GET", "/conversations"):
+            if let id = parseQuery(queryString)["id"] {
+                response = await getMessages(chatVM, listVM: listVM, conversationId: id)
+            } else {
+                response = await listConversations(listVM)
+            }
+        case ("POST", "/conversations"):
+            response = await createConversation(listVM)
+        case ("POST", "/conversations/rename"):
+            response = await renameConversation(body, listVM: listVM)
+        case ("POST", "/conversations/delete"):
+            response = await deleteConversation(body, listVM: listVM)
+        case ("POST", "/conversations/select"):
+            response = await selectConversation(body, chatVM: chatVM, listVM: listVM)
+
+        // === CHAT ===
+        case ("POST", "/send"):
+            response = await sendMessage(body, chatVM: chatVM)
+        case ("POST", "/clear"):
+            await MainActor.run { chatVM.clear() }
+            response = ok()
+        case ("POST", "/system-prompt"):
+            response = await setSystemPrompt(body, chatVM: chatVM)
+
+        // === SETTINGS ===
+        case ("GET", "/settings"):
+            response = await getSettings(settingsVM)
+        case ("POST", "/settings"):
+            response = await updateSettings(body, settingsVM: settingsVM)
+
+        // === SPEECH ===
+        case ("POST", "/speak"):
+            response = await speak(body, chatVM: chatVM)
+        case ("POST", "/stop-speaking"):
+            await MainActor.run { chatVM.speechOutput?.stop() }
+            response = ok()
+
+        // === HELP ===
+        default:
+            response = helpResponse()
+        }
+
+        let http = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: \(response.utf8.count)\r\n\r\n\(response)"
+        _ = http.withCString { write(client, $0, Int(strlen($0))) }
+        close(client)
+    }
+
+    // MARK: - State
+
+    private static func getState(_ chatVM: ChatViewModel, listVM: ConversationListViewModel) async -> String {
+        await MainActor.run {
+            jsonDict([
+                "status": "ok",
+                "conversation_count": listVM.conversations.count,
+                "selected_conversation": listVM.selectedId ?? "",
+                "messages_count": chatVM.messages.count,
+                "is_streaming": chatVM.isStreaming,
+                "current_input": chatVM.currentInput,
+                "error_message": chatVM.errorMessage ?? "",
+            ])
+        }
+    }
+
+    // MARK: - Conversations
+
+    private static func listConversations(_ listVM: ConversationListViewModel) async -> String {
+        await MainActor.run {
+            let convs = listVM.conversations.map { conv -> [String: Any] in
+                ["id": conv.id, "title": conv.title, "updated_at": conv.updatedAt.timeIntervalSince1970]
+            }
+            return jsonDict(["conversations": convs, "count": convs.count])
+        }
+    }
+
+    private static func createConversation(_ listVM: ConversationListViewModel) async -> String {
+        await listVM.createConversation()
+        return await MainActor.run {
+            guard let conv = listVM.conversations.first else { return err("Failed to create") }
+            return jsonDict(["status": "ok", "id": conv.id, "title": conv.title])
+        }
+    }
+
+    private static func renameConversation(_ body: String, listVM: ConversationListViewModel) async -> String {
+        guard let obj = parseJSON(body), let id = obj["id"] as? String, let title = obj["title"] as? String else {
+            return err("Need {\"id\": \"...\", \"title\": \"...\"}")
+        }
+        await listVM.renameConversation(id: id, title: title)
+        return ok()
+    }
+
+    private static func deleteConversation(_ body: String, listVM: ConversationListViewModel) async -> String {
+        guard let obj = parseJSON(body), let id = obj["id"] as? String else {
+            return err("Need {\"id\": \"...\"}")
+        }
+        await listVM.deleteConversation(id: id)
+        return ok()
+    }
+
+    private static func selectConversation(_ body: String, chatVM: ChatViewModel, listVM: ConversationListViewModel) async -> String {
+        guard let obj = parseJSON(body), let id = obj["id"] as? String else {
+            return err("Need {\"id\": \"...\"}")
+        }
+        await MainActor.run {
+            listVM.selectedId = id
+            chatVM.conversationId = id
+        }
+        await chatVM.loadMessages()
+        return await MainActor.run {
+            jsonDict(["status": "ok", "conversation_id": id, "messages_count": chatVM.messages.count])
+        }
+    }
+
+    private static func getMessages(_ chatVM: ChatViewModel, listVM: ConversationListViewModel, conversationId: String) async -> String {
+        // Temporarily load messages for requested conversation
+        let previousId = await MainActor.run { chatVM.conversationId }
+        await MainActor.run { chatVM.conversationId = conversationId }
+        await chatVM.loadMessages()
+        let result = await MainActor.run {
+            let msgs = chatVM.messages.map { msg -> [String: Any] in
+                var m: [String: Any] = [
+                    "id": msg.id, "role": msg.role.rawValue, "content": msg.content,
+                ]
+                if let tokens = msg.tokenCount { m["tokens"] = tokens }
+                if let ms = msg.durationMs { m["duration_ms"] = ms }
+                return m
+            }
+            return jsonDict(["messages": msgs, "count": msgs.count, "conversation_id": conversationId])
+        }
+        // Restore previous conversation
+        if let prev = previousId {
+            await MainActor.run { chatVM.conversationId = prev }
+            await chatVM.loadMessages()
+        }
+        return result
+    }
+
+    // MARK: - Chat
+
+    private static func sendMessage(_ body: String, chatVM: ChatViewModel) async -> String {
+        guard let obj = parseJSON(body), let message = obj["message"] as? String else {
+            return err("Need {\"message\": \"text\"}")
+        }
+        await MainActor.run { chatVM.currentInput = message }
+        await chatVM.send()
+        return await MainActor.run {
+            guard let msg = chatVM.messages.last else { return ok() }
+            return jsonDict([
+                "status": "ok",
+                "role": msg.role.rawValue,
+                "content": msg.content,
+                "tokens": msg.tokenCount ?? 0,
+                "duration_ms": msg.durationMs ?? 0,
+            ])
+        }
+    }
+
+    private static func setSystemPrompt(_ body: String, chatVM: ChatViewModel) async -> String {
+        guard let obj = parseJSON(body), let prompt = obj["prompt"] as? String else {
+            return err("Need {\"prompt\": \"text\"}")
+        }
+        await MainActor.run { chatVM.systemPrompt = prompt }
+        return ok()
+    }
+
+    // MARK: - Settings
+
+    private static func getSettings(_ settingsVM: SettingsViewModel) async -> String {
+        await MainActor.run {
+            jsonDict([
+                "temperature": settingsVM.temperature as Any,
+                "max_tokens": settingsVM.maxTokens as Any,
+                "seed": settingsVM.seed as Any,
+                "json_mode": settingsVM.jsonMode,
+                "base_url": settingsVM.baseURL,
+                "model_name": settingsVM.modelName,
+                "tts_language": settingsVM.ttsLanguage,
+                "auto_speak": settingsVM.autoSpeak,
+            ])
+        }
+    }
+
+    private static func updateSettings(_ body: String, settingsVM: SettingsViewModel) async -> String {
+        guard let obj = parseJSON(body) else { return err("Invalid JSON") }
+        await MainActor.run {
+            if let v = obj["temperature"] as? Double { settingsVM.temperature = v }
+            if let v = obj["max_tokens"] as? Int { settingsVM.maxTokens = v }
+            if let v = obj["seed"] as? Int { settingsVM.seed = v }
+            if let v = obj["json_mode"] as? Bool { settingsVM.jsonMode = v }
+            if let v = obj["base_url"] as? String { settingsVM.baseURL = v }
+            if let v = obj["model_name"] as? String { settingsVM.modelName = v }
+            if let v = obj["tts_language"] as? String { settingsVM.ttsLanguage = v }
+            if let v = obj["auto_speak"] as? Bool { settingsVM.autoSpeak = v }
+            settingsVM.save()
+        }
+        return ok()
+    }
+
+    // MARK: - Speech
+
+    private static func speak(_ body: String, chatVM: ChatViewModel) async -> String {
+        guard let obj = parseJSON(body), let text = obj["text"] as? String else {
+            return err("Need {\"text\": \"...\"}")
+        }
+        let lang = obj["language"] as? String ?? "en-US"
+        await MainActor.run { chatVM.speechOutput?.speak(text, languageCode: lang) }
+        return jsonDict(["status": "speaking", "text": text])
+    }
+
+    // MARK: - Help
+
+    nonisolated private static func helpResponse() -> String {
+        jsonDict([
+            "name": "apfel-chat control API",
+            "usage": "Start with: apfel-chat --api",
+            "port": 11441,
+            "endpoints": [
+                "GET  /                       Help (this response)",
+                "GET  /state                  App state",
+                "GET  /conversations           List all conversations",
+                "GET  /conversations?id=X      Get messages for conversation X",
+                "POST /conversations           Create new conversation",
+                "POST /conversations/rename    Rename: {\"id\": \"...\", \"title\": \"...\"}",
+                "POST /conversations/delete    Delete: {\"id\": \"...\"}",
+                "POST /conversations/select    Select: {\"id\": \"...\"}",
+                "POST /send                   Send message: {\"message\": \"text\"}",
+                "POST /clear                  Clear chat",
+                "POST /system-prompt          Set system prompt: {\"prompt\": \"text\"}",
+                "GET  /settings               Get settings",
+                "POST /settings               Update settings: {\"temperature\": 0.7, ...}",
+                "POST /speak                  Speak text: {\"text\": \"...\"}",
+                "POST /stop-speaking          Stop TTS",
+            ]
+        ])
+    }
+
+    // MARK: - Helpers
+
+    nonisolated private static func parseJSON(_ body: String) -> [String: Any]? {
+        guard let data = body.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    nonisolated private static func parseQuery(_ query: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for pair in query.split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1)
+            if kv.count == 2 { result[String(kv[0])] = String(kv[1]) }
+        }
+        return result
+    }
+
+    nonisolated private static func ok(_ extra: [String: Any] = [:]) -> String {
+        var d: [String: Any] = ["status": "ok"]
+        for (k, v) in extra { d[k] = v }
+        return jsonDict(d)
+    }
+
+    nonisolated private static func err(_ message: String) -> String {
+        jsonDict(["error": message])
+    }
+
+    nonisolated private static func jsonDict(_ dict: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return "{}" }
+        return str
+    }
+}
+
+// MARK: - Socket helpers
+
+private func createControlListenerSocket(port: UInt16) -> Int32? {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { return nil }
+    var opt: Int32 = 1
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, socklen_t(MemoryLayout<Int32>.size))
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_port = port.bigEndian
+    addr.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+    let bindResult = withUnsafePointer(to: &addr) { ptr in
+        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+    }
+    guard bindResult == 0, listen(fd, 5) == 0 else { close(fd); return nil }
+    return fd
+}
+
+private func acceptControlSocket(_ listener: Int32) async throws -> Int32 {
+    try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global().async {
+            var clientAddr = sockaddr_in()
+            var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let client = withUnsafeMutablePointer(to: &clientAddr) { ptr in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(listener, $0, &len) }
+            }
+            client >= 0 ? continuation.resume(returning: client) : continuation.resume(throwing: NSError(domain: "accept", code: Int(client)))
+        }
+    }
+}
