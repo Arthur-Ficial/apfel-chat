@@ -17,20 +17,21 @@ struct ChatView: View {
 
             InputBar(viewModel: viewModel)
         }
-        .background(.white)
+        .background(Color(white: 0.98))
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Spacer()
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 48))
-                .foregroundStyle(.quaternary)
+                .font(.system(size: 52, weight: .ultraLight))
+                .foregroundStyle(Color(white: 0.8))
             Text("Start a conversation")
-                .font(.title3)
+                .font(.title2)
+                .fontWeight(.medium)
                 .foregroundStyle(.secondary)
             Text("Private AI on your Mac")
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.tertiary)
             Spacer()
         }
@@ -40,46 +41,56 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 16) {
                     ForEach(viewModel.messages) { msg in
                         MessageBubble(message: msg)
                             .id(msg.id)
                     }
 
                     if viewModel.isStreaming {
-                        HStack {
+                        HStack(spacing: 8) {
                             ProgressView()
-                                .scaleEffect(0.7)
-                                .padding(.leading, 16)
+                                .scaleEffect(0.6)
+                            Text("Thinking...")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                             Spacer()
                         }
-                        .id("streaming-indicator")
+                        .padding(.leading, 20)
+                        .id("streaming")
                     }
                 }
-                .padding(16)
+                .padding(.vertical, 20)
             }
             .onChange(of: viewModel.messages.count) {
                 withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(viewModel.messages.last?.id ?? "streaming-indicator", anchor: .bottom)
+                    proxy.scrollTo(viewModel.messages.last?.id ?? "streaming", anchor: .bottom)
+                }
+            }
+            .onChange(of: viewModel.messages.last?.content) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(viewModel.messages.last?.id, anchor: .bottom)
                 }
             }
         }
     }
 
     private func errorBanner(_ message: String) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             Text(message)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Dismiss") { viewModel.errorMessage = nil }
-                .font(.caption)
-                .buttonStyle(.plain)
+            Button(action: { viewModel.errorMessage = nil }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08))
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.06))
     }
 }
