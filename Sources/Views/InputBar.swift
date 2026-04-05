@@ -1,49 +1,69 @@
 import SwiftUI
 
+enum InputFocus {
+    case message
+}
+
 struct InputBar: View {
     @Bindable var viewModel: ChatViewModel
+    @FocusState private var focused: InputFocus?
 
     var body: some View {
-        HStack(spacing: 8) {
-            if viewModel.speechInput != nil {
-                Button(action: { Task { await viewModel.toggleListening() } }) {
-                    Image(systemName: viewModel.speechInput?.isListening == true ? "mic.fill" : "mic")
-                        .foregroundStyle(viewModel.speechInput?.isListening == true ? .red : .secondary)
+        VStack(spacing: 0) {
+            Divider()
+            HStack(alignment: .center, spacing: 8) {
+                // Mic button
+                if viewModel.speechInput != nil {
+                    Button(action: { Task { await viewModel.toggleListening() } }) {
+                        Image(systemName: viewModel.speechInput?.isListening == true ? "stop.circle.fill" : "mic.fill")
+                            .font(.body)
+                            .foregroundStyle(viewModel.speechInput?.isListening == true ? .red : .gray)
+                            .frame(width: 30, height: 30)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.borderless)
+                    .help(viewModel.speechInput?.isListening == true ? "Stop listening" : "Voice input")
                 }
-                .buttonStyle(.plain)
-                .help("Voice input")
-            }
 
-            TextField("Message...", text: $viewModel.currentInput, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .onSubmit { Task { await viewModel.send() } }
+                // Text input
+                TextField("Type a message, press Enter to send...", text: $viewModel.currentInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body)
+                    .focused($focused, equals: .message)
+                    .onSubmit {
+                        Task { await viewModel.send() }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focused = .message
+                        }
+                    }
 
-            if viewModel.speechOutput != nil {
+                // Send button
                 Button(action: {
-                    if viewModel.speechOutput?.isSpeaking == true {
-                        viewModel.speechOutput?.stop()
-                    } else {
-                        viewModel.speakLastResponse()
+                    Task { await viewModel.send() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        focused = .message
                     }
                 }) {
-                    Image(systemName: viewModel.speechOutput?.isSpeaking == true ? "speaker.wave.3.fill" : "speaker.wave.2")
-                        .foregroundStyle(viewModel.speechOutput?.isSpeaking == true ? .blue : .secondary)
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(canSend ? .blue : Color(nsColor: .tertiaryLabelColor))
                 }
-                .buttonStyle(.plain)
-                .help("Read aloud")
+                .buttonStyle(.borderless)
+                .disabled(!canSend)
+                .help("Send message")
             }
-
-            Button(action: { Task { await viewModel.send() } }) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(viewModel.currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .blue)
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isStreaming)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .padding(12)
-        .background(.white)
-        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color(white: 0.9)), alignment: .top)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focused = .message
+            }
+        }
+    }
+
+    private var canSend: Bool {
+        !viewModel.currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming
     }
 }

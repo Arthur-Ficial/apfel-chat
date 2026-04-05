@@ -4,7 +4,25 @@ struct SettingsPanel: View {
     @Bindable var viewModel: SettingsViewModel
     @State private var showAdvanced = false
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
+        VStack(spacing: 0) {
+            // Title bar with close button
+            HStack {
+                Text("Settings")
+                    .font(.headline)
+                Spacer()
+                Button("Done") {
+                    viewModel.save()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+
         Form {
             Section("General") {
                 VStack(alignment: .leading) {
@@ -58,7 +76,8 @@ struct SettingsPanel: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: 450)
+        }
+        .frame(width: 420, height: 500)
         .onDisappear { viewModel.save() }
     }
 

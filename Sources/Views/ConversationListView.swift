@@ -19,14 +19,15 @@ struct ConversationListView: View {
             List(selection: $viewModel.selectedId) {
                 ForEach(viewModel.conversations) { conv in
                     if editingId == conv.id {
-                        TextField("Title", text: $editTitle, onCommit: {
-                            Task {
-                                await viewModel.renameConversation(id: conv.id, title: editTitle)
-                                editingId = nil
+                        TextField("Title", text: $editTitle)
+                            .textFieldStyle(.plain)
+                            .onSubmit {
+                                Task {
+                                    await viewModel.renameConversation(id: conv.id, title: editTitle)
+                                    editingId = nil
+                                }
                             }
-                        })
-                        .textFieldStyle(.plain)
-                        .tag(conv.id)
+                            .tag(conv.id)
                     } else {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(conv.title)
@@ -42,10 +43,17 @@ struct ConversationListView: View {
                                 editTitle = conv.title
                                 editingId = conv.id
                             }
+                            Divider()
                             Button("Delete", role: .destructive) {
                                 Task { await viewModel.deleteConversation(id: conv.id) }
                             }
                         }
+                    }
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        let conv = viewModel.conversations[index]
+                        Task { await viewModel.deleteConversation(id: conv.id) }
                     }
                 }
             }
@@ -54,7 +62,6 @@ struct ConversationListView: View {
                 if let id = newId { onSelect(id) }
             }
         }
-        .frame(minWidth: 200)
-        .background(Color(white: 0.96))
+        .frame(minWidth: 220)
     }
 }

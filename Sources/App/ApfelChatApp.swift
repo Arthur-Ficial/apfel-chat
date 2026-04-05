@@ -1,8 +1,17 @@
 import SwiftUI
+import AppKit
 
 @main
 struct ApfelChatApp: App {
     @State private var serverManager = ServerManager()
+
+    init() {
+        // CRITICAL: When running as a bare binary (not .app bundle),
+        // macOS won't give us foreground/keyboard focus without this.
+        // Without it, clicking the window does nothing — focus stays in the terminal.
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
     @State private var chatService: ApfelChatService?
     @State private var persistence: SQLitePersistence?
     @State private var conversationListVM: ConversationListViewModel?
@@ -49,10 +58,24 @@ struct ApfelChatApp: App {
             ChatView(viewModel: chatVM)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
-                        Button(action: { settingsVM.showSettings = true }) {
-                            Image(systemName: "gearshape")
+                        HStack(spacing: 8) {
+                            if chatVM.speechOutput != nil {
+                                Button(action: {
+                                    if chatVM.speechOutput?.isSpeaking == true {
+                                        chatVM.speechOutput?.stop()
+                                    } else {
+                                        chatVM.speakLastResponse()
+                                    }
+                                }) {
+                                    Image(systemName: chatVM.speechOutput?.isSpeaking == true ? "speaker.wave.3.fill" : "speaker.wave.2")
+                                }
+                                .help("Read last response aloud")
+                            }
+                            Button(action: { settingsVM.showSettings = true }) {
+                                Image(systemName: "gearshape")
+                            }
+                            .help("Settings")
                         }
-                        .help("Settings")
                     }
                 }
         }
