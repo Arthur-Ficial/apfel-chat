@@ -5,6 +5,9 @@ import PackageDescription
 let package = Package(
     name: "apfel-chat",
     platforms: [.macOS(.v26)],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-testing.git", from: "0.12.0"),
+    ],
     targets: [
         .executableTarget(
             name: "apfel-chat",
@@ -21,7 +24,10 @@ let package = Package(
         ),
         .testTarget(
             name: "ApfelChatTests",
-            dependencies: ["apfel-chat"],
+            dependencies: [
+                "apfel-chat",
+                .product(name: "Testing", package: "swift-testing"),
+            ],
             path: "Tests"
         ),
     ]
