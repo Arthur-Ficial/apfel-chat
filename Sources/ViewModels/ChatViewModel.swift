@@ -1,0 +1,169 @@
+import Foundation
+import SwiftUI
+
+@Observable
+@MainActor
+final class ChatViewModel {
+    var messages: [Message] = []
+    var currentInput: String = ""
+    var isStreaming: Bool = false
+    var errorMessage: String?
+    var conversationId: String?
+    var systemPrompt: String?
+    var settings: ModelSettings = ModelSettings()
+
+    private let chatService: ChatService
+    private let persistence: ChatPersistence
+    let speechInput: (any SpeechInput)?
+    let speechOutput: (any SpeechOutput)?
+
+    init(
+        chatService: ChatService,
+        persistence: ChatPersistence,
+        speechInput: (any SpeechInput)? = nil,
+        speechOutput: (any SpeechOutput)? = nil
+    ) {
+        self.chatService = chatService
+        self.persistence = persistence
+        self.speechInput = speechInput
+        self.speechOutput = speechOutput
+    }
+
+    func send() async {
+        let text = currentInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard let convId = conversationId else { return }
+
+        currentInput = ""
+        errorMessage = nil
+
+        let userMsg = Message(conversationId: convId, role: .user, content: text)
+        messages.append(userMsg)
+        try? await persistence.addMessage(userMsg, to: convId)
+
+        let isFirstMessage = messages.filter({ $0.role == .user }).count == 1
+
+        // Build API messages including system prompt
+        var apiMessages: [Message] = []
+        if let sys = systemPrompt, !sys.isEmpty {
+            apiMessages.append(Message(conversationId: convId, role: .system, content: sys))
+        }
+        apiMessages.append(contentsOf: messages)
+
+        // Stream response
+        isStreaming = true
+        let assistantMsg = Message(conversationId: convId, role: .assistant, content: "", isStreaming: true)
+        messages.append(assistantMsg)
+        let assistantIdx = messages.count - 1
+        let start = Date()
+
+        let stream = chatService.send(messages: apiMessages, settings: settings)
+
+        do {
+            for try await delta in stream {
+                if let deltaText = delta.text {
+                    messages[assistantIdx].content += deltaText
+                }
+                if let usage = delta.usage {
+                    messages[assistantIdx].tokenCount = usage.totalTokens
+                }
+            }
+            messages[assistantIdx].isStreaming = false
+            messages[assistantIdx].durationMs = Int(Date().timeIntervalSince(start) * 1000)
+            try? await persistence.addMessage(messages[assistantIdx], to: convId)
+
+            // Auto-title after first exchange
+            if isFirstMessage {
+                await generateTitle(from: text, conversationId: convId)
+            }
+        } catch {
+            // If assistant message is empty, remove it; otherwise keep partial content
+            if messages[assistantIdx].content.isEmpty {
+                messages.remove(at: assistantIdx)
+            } else {
+                messages[assistantIdx].isStreaming = false
+            }
+            errorMessage = error.localizedDescription
+        }
+
+        isStreaming = false
+    }
+
+    func loadMessages() async {
+        guard let convId = conversationId else { return }
+        do {
+            messages = try await persistence.messages(for: convId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func clear() {
+        messages = []
+        errorMessage = nil
+    }
+
+    // MARK: - Speech
+
+    func toggleListening() async {
+        guard let stt = speechInput else { return }
+        if stt.isListening {
+            let transcript = stt.stopListening()
+            if !transcript.isEmpty {
+                currentInput = transcript
+                await send()
+            }
+        } else {
+            let granted = await stt.requestPermissions()
+            if granted {
+                stt.startListening()
+            }
+        }
+    }
+
+    func speakLastResponse() {
+        guard let tts = speechOutput else { return }
+        guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else { return }
+        tts.speak(lastAssistant.content, languageCode: "en-US")
+    }
+
+    // MARK: - AI-Powered Title Generation
+
+    private func generateTitle(from firstMessage: String, conversationId: String) async {
+        let titlePrompt = Message(
+            conversationId: conversationId,
+            role: .user,
+            content: "Generate a very short title (3-5 words max, no quotes) for a conversation that starts with: \(firstMessage)"
+        )
+        let systemMsg = Message(
+            conversationId: conversationId,
+            role: .system,
+            content: "You are a title generator. Respond with ONLY the title, nothing else. 3-5 words maximum. No quotes, no punctuation at the end."
+        )
+
+        var title = ""
+        let stream = chatService.send(messages: [systemMsg, titlePrompt], settings: ModelSettings())
+        do {
+            for try await delta in stream {
+                if let text = delta.text { title += text }
+            }
+        } catch {
+            // Fallback: truncate first message
+            let words = firstMessage.split(separator: " ").prefix(6).joined(separator: " ")
+            title = words.count > 40 ? String(words.prefix(40)) + "..." : words
+        }
+
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { return }
+
+        do {
+            let conversations = try await persistence.listConversations()
+            if var conv = conversations.first(where: { $0.id == conversationId }) {
+                conv.title = cleanTitle
+                try await persistence.updateConversation(conv)
+            }
+        } catch {
+            // Title update is best-effort; don't surface this error
+        }
+    }
+}
