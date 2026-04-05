@@ -12,6 +12,16 @@ final class ServerManager {
     private(set) var state: State = .idle
     private var serverProcess: Process?
 
+    nonisolated static func findOhrBinary() -> String? {
+        if let resolved = ProcessInfo.processInfo.environment["PATH"]?
+            .split(separator: ":").map({ "\($0)/ohr" })
+            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            return resolved
+        }
+        let fallbacks = ["/usr/local/bin/ohr", "/opt/homebrew/bin/ohr"]
+        return fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
     nonisolated static func findApfelBinary() -> String? {
         if let resolved = ProcessInfo.processInfo.environment["PATH"]?
             .split(separator: ":").map({ "\($0)/apfel" })

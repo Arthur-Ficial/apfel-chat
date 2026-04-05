@@ -194,4 +194,42 @@ struct ChatViewModelTests {
         #expect(stored[0].role == .user)
         #expect(stored[1].role == .assistant)
     }
+
+    @Test("Context cutoff index calculated correctly")
+    func contextCutoff() async throws {
+        let (vm, _, _) = makeVM()
+        vm.contextWindow = 100  // 100 token window
+        // Add messages with known token counts
+        vm.messages = [
+            Message(conversationId: "c1", role: .user, content: "First", tokenCount: 30),
+            Message(conversationId: "c1", role: .assistant, content: "Response 1", tokenCount: 30),
+            Message(conversationId: "c1", role: .user, content: "Second", tokenCount: 30),
+            Message(conversationId: "c1", role: .assistant, content: "Response 2", tokenCount: 30),
+        ]
+        // 30+30+30+30 = 120 > 100, so first message should be out of context
+        // Walking backward: msg3(30) + msg2(30) + msg1(30) = 90 fits, msg0(30) would make 120 > 100
+        let cutoff = vm.contextCutoffIndex
+        #expect(cutoff == 1)  // Messages at index 0 are out of context
+    }
+
+    @Test("Context cutoff nil when no context window")
+    func contextCutoffNil() async throws {
+        let (vm, _, _) = makeVM()
+        vm.contextWindow = nil
+        vm.messages = [
+            Message(conversationId: "c1", role: .user, content: "Hello", tokenCount: 50),
+        ]
+        #expect(vm.contextCutoffIndex == nil)
+    }
+
+    @Test("All messages in context when total fits")
+    func allInContext() async throws {
+        let (vm, _, _) = makeVM()
+        vm.contextWindow = 1000
+        vm.messages = [
+            Message(conversationId: "c1", role: .user, content: "Hello", tokenCount: 10),
+            Message(conversationId: "c1", role: .assistant, content: "Hi", tokenCount: 10),
+        ]
+        #expect(vm.contextCutoffIndex == nil)  // nil means all fit
+    }
 }

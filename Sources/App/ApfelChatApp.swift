@@ -131,12 +131,25 @@ struct ApfelChatApp: App {
             let service = ApfelChatService(port: port)
             self.chatService = service
 
-            let stt = OnDeviceSpeechInput()
+            var serverContextWindow: Int?
+            if let health = try? await service.healthCheck() {
+                serverContextWindow = health.contextWindow
+            }
+
+            let stt: any SpeechInput
+            if let ohrPath = ServerManager.findOhrBinary() {
+                stt = OhrSpeechInput(ohrPath: ohrPath, languageCode: settingsVM.ttsLanguage)
+                printToStderr("apfel-chat: using ohr for speech input")
+            } else {
+                stt = OnDeviceSpeechInput()
+                printToStderr("apfel-chat: using on-device speech input")
+            }
             let tts = OnDeviceSpeechOutput()
 
             let listVM = ConversationListViewModel(persistence: db)
             let chatVM = ChatViewModel(chatService: service, persistence: db, speechInput: stt, speechOutput: tts)
             chatVM.settings = settingsVM.toModelSettings()
+            chatVM.contextWindow = serverContextWindow
 
             await listVM.loadConversations()
 

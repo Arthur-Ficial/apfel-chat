@@ -52,6 +52,16 @@ struct InputBar: View {
                 .buttonStyle(.borderless)
                 .disabled(!canSend)
                 .help("Send message")
+
+                // Clear chat button
+                Button(action: { viewModel.clear() }) {
+                    Image(systemName: "trash")
+                        .font(.body)
+                        .foregroundStyle(viewModel.messages.isEmpty ? Color(nsColor: .tertiaryLabelColor) : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.messages.isEmpty)
+                .help("Clear chat")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

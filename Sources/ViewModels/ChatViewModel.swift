@@ -11,6 +11,20 @@ final class ChatViewModel {
     var conversationId: String?
     var systemPrompt: String?
     var settings: ModelSettings = ModelSettings()
+    var contextWindow: Int?
+
+    var contextCutoffIndex: Int? {
+        guard let window = contextWindow, !messages.isEmpty else { return nil }
+        var total = 0
+        // Walk from newest to oldest
+        for i in stride(from: messages.count - 1, through: 0, by: -1) {
+            total += messages[i].tokenCount ?? 0
+            if total > window {
+                return i + 1  // This index and below are out of context
+            }
+        }
+        return nil  // All fit
+    }
 
     private let chatService: ChatService
     private let persistence: ChatPersistence

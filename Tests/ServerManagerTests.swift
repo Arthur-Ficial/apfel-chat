@@ -33,4 +33,11 @@ struct ServerManagerTests {
         #expect(args.contains("--cors"))
         #expect(!args.contains("--debug"))
     }
+
+    @Test("findOhrBinary returns path when ohr exists")
+    func findOhrInPath() {
+        // ohr should be installed on this machine
+        let path = ServerManager.findOhrBinary()
+        #expect(path != nil)
+    }
 }

@@ -33,6 +33,9 @@ struct ChatView: View {
             Text("Private AI on your Mac")
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
+            Text("Press \u{2318}N for new chat")
+                .font(.caption)
+                .foregroundStyle(.quaternary)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,9 +45,29 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    ForEach(viewModel.messages) { msg in
-                        MessageBubble(message: msg)
-                            .id(msg.id)
+                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, msg in
+                        // Context window divider
+                        if let cutoff = viewModel.contextCutoffIndex, index == cutoff {
+                            HStack(spacing: 8) {
+                                Rectangle().frame(height: 1).foregroundStyle(Color(white: 0.85))
+                                Text("context window")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .fixedSize()
+                                Rectangle().frame(height: 1).foregroundStyle(Color(white: 0.85))
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 4)
+                        }
+
+                        MessageBubble(
+                            message: msg,
+                            isOutOfContext: {
+                                guard let cutoff = viewModel.contextCutoffIndex else { return false }
+                                return index < cutoff
+                            }()
+                        )
+                        .id(msg.id)
                     }
 
                     if viewModel.isStreaming {

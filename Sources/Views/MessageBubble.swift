@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MessageBubble: View {
     let message: Message
+    var isOutOfContext: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -40,6 +41,11 @@ struct MessageBubble: View {
             }
         }
         .padding(.horizontal, 16)
+        .opacity(isOutOfContext ? 0.35 : 1.0)
+    }
+
+    private var displayContent: String {
+        message.isStreaming ? message.content + "\u{2588}" : message.content
     }
 
     @ViewBuilder
@@ -51,9 +57,9 @@ struct MessageBubble: View {
                     .textSelection(.enabled)
             }
         } else {
-            let blocks = MarkdownRenderer.parseBlocks(message.content)
+            let blocks = MarkdownRenderer.parseBlocks(displayContent)
             if blocks.count == 1 && blocks[0].type == .text {
-                Text(MarkdownRenderer.render(message.content))
+                Text(MarkdownRenderer.render(displayContent))
                     .font(.body)
                     .textSelection(.enabled)
             } else {
