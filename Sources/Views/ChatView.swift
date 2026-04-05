@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
@@ -15,9 +16,35 @@ struct ChatView: View {
                 errorBanner(error)
             }
 
+            if viewModel.isAnalyzingImage {
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.6)
+                    Text("Analyzing image with auge...")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.blue.opacity(0.05))
+            }
+
             InputBar(viewModel: viewModel)
         }
         .background(Color(white: 0.98))
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                let ext = url.pathExtension.lowercased()
+                let imageExts = ["png", "jpg", "jpeg", "heic", "tiff", "tif", "bmp", "pdf"]
+                guard imageExts.contains(ext) else { return }
+                Task { @MainActor in
+                    await viewModel.handleImageDrop(urls: [url])
+                }
+            }
+            return true
+        }
     }
 
     private var emptyState: some View {

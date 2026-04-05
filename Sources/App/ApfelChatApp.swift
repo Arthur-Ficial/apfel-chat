@@ -150,6 +150,7 @@ struct ApfelChatApp: App {
             let chatVM = ChatViewModel(chatService: service, persistence: db, speechInput: stt, speechOutput: tts)
             chatVM.settings = settingsVM.toModelSettings()
             chatVM.contextWindow = serverContextWindow
+            chatVM.augeService = AugeService()
 
             await listVM.loadConversations()
 

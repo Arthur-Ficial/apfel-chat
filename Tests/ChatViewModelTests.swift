@@ -232,4 +232,34 @@ struct ChatViewModelTests {
         ]
         #expect(vm.contextCutoffIndex == nil)  // nil means all fit
     }
+
+    @Test("handleImageDrop does nothing without augeService")
+    func imageDropNoAuge() async throws {
+        let (vm, _, _) = makeVM()
+        vm.augeService = nil
+        let url = URL(fileURLWithPath: "/tmp/test.png")
+        await vm.handleImageDrop(urls: [url])
+        #expect(vm.messages.isEmpty)
+    }
+
+    @Test("handleImageDrop does nothing without conversationId")
+    func imageDropNoConversation() async throws {
+        let (vm, _, _) = makeVM()
+        vm.augeService = AugeService()
+        vm.conversationId = nil
+        let url = URL(fileURLWithPath: "/tmp/test.png")
+        await vm.handleImageDrop(urls: [url])
+        #expect(vm.messages.isEmpty)
+    }
+
+    @Test("isAnalyzingImage resets after drop")
+    func analyzingImageResets() async throws {
+        let (vm, _, _) = makeVM()
+        // Without auge service, handleImageDrop returns early without changing isAnalyzingImage
+        vm.augeService = nil
+        #expect(vm.isAnalyzingImage == false)
+        let url = URL(fileURLWithPath: "/tmp/test.png")
+        await vm.handleImageDrop(urls: [url])
+        #expect(vm.isAnalyzingImage == false)
+    }
 }

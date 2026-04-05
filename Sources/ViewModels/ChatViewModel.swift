@@ -12,6 +12,8 @@ final class ChatViewModel {
     var systemPrompt: String?
     var settings: ModelSettings = ModelSettings()
     var contextWindow: Int?
+    var augeService: AugeService?
+    var isAnalyzingImage: Bool = false
 
     var contextCutoffIndex: Int? {
         guard let window = contextWindow, !messages.isEmpty else { return nil }
@@ -139,6 +141,33 @@ final class ChatViewModel {
         guard let tts = speechOutput else { return }
         guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else { return }
         tts.speak(lastAssistant.content, languageCode: "en-US")
+    }
+
+    // MARK: - Image Analysis
+
+    func handleImageDrop(urls: [URL]) async {
+        guard let url = urls.first, let auge = augeService else { return }
+        guard let convId = conversationId else { return }
+
+        isAnalyzingImage = true
+        let result = await auge.analyze(imagePath: url.path)
+        isAnalyzingImage = false
+
+        // Truncate if it would blow the context window
+        var summary = result.summary
+        if let window = contextWindow {
+            let maxChars = window * 4 // rough token-to-char ratio
+            let currentChars = messages.reduce(0) { $0 + $1.content.count }
+            let available = maxChars - currentChars - 500 // leave room for response
+            if summary.count > available && available > 200 {
+                summary = String(summary.prefix(available)) + "\n... (truncated to fit context window)"
+            }
+        }
+
+        // Add as a user message with the analysis
+        let imageMsg = Message(conversationId: convId, role: .user, content: summary)
+        messages.append(imageMsg)
+        try? await persistence.addMessage(imageMsg, to: convId)
     }
 
     // MARK: - AI-Powered Title Generation
