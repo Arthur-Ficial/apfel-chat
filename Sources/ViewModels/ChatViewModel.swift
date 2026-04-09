@@ -197,10 +197,64 @@ final class ChatViewModel {
             }
         }
 
-        // Add as a user message with the analysis
+        let isFirstMessage = messages.filter({ $0.role == .user }).isEmpty
+
+        // Add as a user message with the analysis and immediately stream a reply
         let imageMsg = Message(conversationId: convId, role: .user, content: summary)
         messages.append(imageMsg)
         try? await persistence.addMessage(imageMsg, to: convId)
+
+        errorMessage = nil
+
+        var apiMessages: [Message] = []
+        if let sys = systemPrompt, !sys.isEmpty {
+            apiMessages.append(Message(conversationId: convId, role: .system, content: sys))
+        }
+        apiMessages.append(contentsOf: messages)
+
+        isStreaming = true
+        let assistantMsg = Message(conversationId: convId, role: .assistant, content: "", isStreaming: true)
+        messages.append(assistantMsg)
+        let assistantIdx = messages.count - 1
+        let start = Date()
+
+        let stream = chatService.send(messages: apiMessages, settings: settings)
+
+        do {
+            for try await delta in stream {
+                if let deltaText = delta.text {
+                    messages[assistantIdx].content += deltaText
+                }
+                if let usage = delta.usage {
+                    messages[assistantIdx].tokenCount = usage.totalTokens
+                }
+            }
+            messages[assistantIdx].isStreaming = false
+            messages[assistantIdx].durationMs = Int(Date().timeIntervalSince(start) * 1000)
+            try? await persistence.addMessage(messages[assistantIdx], to: convId)
+            recomputeContextCutoff()
+
+            if autoSpeak, let tts = speechOutput, !messages[assistantIdx].content.isEmpty {
+                tts.speak(messages[assistantIdx].content, languageCode: ttsLanguage)
+            }
+
+            if isFirstMessage {
+                let capturedSummary = summary
+                let capturedConvId = convId
+                Task { [weak self] in
+                    await self?.generateTitle(from: capturedSummary, conversationId: capturedConvId)
+                }
+            }
+        } catch {
+            if messages[assistantIdx].content.isEmpty {
+                messages.remove(at: assistantIdx)
+            } else {
+                messages[assistantIdx].isStreaming = false
+            }
+            errorMessage = error.localizedDescription
+        }
+
+        isStreaming = false
     }
 
     // MARK: - AI-Powered Title Generation
