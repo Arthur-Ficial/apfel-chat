@@ -11,7 +11,7 @@ final class OhrSpeechInput: SpeechInput {
     private var process: Process?
     private var languageCode: String
 
-    init(ohrPath: String, languageCode: String = "en-US") {
+    init(ohrPath: String, languageCode: String = AppDefaults.ttsLanguage) {
         self.ohrPath = ohrPath
         self.languageCode = languageCode
     }

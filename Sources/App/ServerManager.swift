@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 @MainActor
 final class ServerManager {
@@ -12,24 +13,38 @@ final class ServerManager {
     private(set) var state: State = .idle
     private var serverProcess: Process?
 
-    nonisolated static func findOhrBinary() -> String? {
+    /// Finds an executable by name, checking PATH, bundle, and common install locations
+    nonisolated static func findBinary(named name: String) -> String? {
+        // Check PATH
         if let resolved = ProcessInfo.processInfo.environment["PATH"]?
-            .split(separator: ":").map({ "\($0)/ohr" })
+            .split(separator: ":").map({ "\($0)/\(name)" })
             .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return resolved
         }
-        let fallbacks = ["/usr/local/bin/ohr", "/opt/homebrew/bin/ohr"]
+        // Check inside .app bundle (Contents/MacOS/ and Contents/Helpers/)
+        if let execPath = Bundle.main.executablePath {
+            let bundleDir = URL(fileURLWithPath: execPath).deletingLastPathComponent()
+            let inMacOS = bundleDir.appendingPathComponent(name).path
+            if FileManager.default.isExecutableFile(atPath: inMacOS) { return inMacOS }
+            let inHelpers = bundleDir.deletingLastPathComponent()
+                .appendingPathComponent("Helpers/\(name)").path
+            if FileManager.default.isExecutableFile(atPath: inHelpers) { return inHelpers }
+        }
+        // Common install locations
+        let fallbacks = [
+            "/opt/homebrew/bin/\(name)",
+            "/usr/local/bin/\(name)",
+            "\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin/\(name)",
+        ]
         return fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
+    nonisolated static func findOhrBinary() -> String? {
+        findBinary(named: "ohr")
+    }
+
     nonisolated static func findApfelBinary() -> String? {
-        if let resolved = ProcessInfo.processInfo.environment["PATH"]?
-            .split(separator: ":").map({ "\($0)/apfel" })
-            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return resolved
-        }
-        let fallbacks = ["/usr/local/bin/apfel", "/opt/homebrew/bin/apfel"]
-        return fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
+        findBinary(named: "apfel")
     }
 
     nonisolated static func isPortAvailable(_ port: Int) -> Bool {
@@ -53,7 +68,7 @@ final class ServerManager {
         return result == 0
     }
 
-    nonisolated static func findAvailablePort(startingAt: Int = 11440) -> Int {
+    nonisolated static func findAvailablePort(startingAt: Int = AppDefaults.serverPortStart) -> Int {
         for port in startingAt..<(startingAt + 10) {
             if isPortAvailable(port) { return port }
         }
@@ -140,6 +155,18 @@ final class ServerManager {
     }
 }
 
+/// Returns true if running inside a .app bundle (Contents/MacOS/...)
+func isRunningAsAppBundle() -> Bool {
+    let path = Bundle.main.executablePath ?? ProcessInfo.processInfo.arguments[0]
+    return path.contains(".app/Contents/MacOS/")
+}
+
+private let appLogger = Logger(subsystem: "com.fullstackoptimization.apfel-chat", category: "general")
+
 func printToStderr(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
+    if isRunningAsAppBundle() {
+        appLogger.info("\(message)")
+    } else {
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
 }

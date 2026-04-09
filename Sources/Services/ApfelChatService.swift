@@ -4,12 +4,12 @@ final class ApfelChatService: ChatService, @unchecked Sendable {
     var baseURL: URL
     var modelName: String
 
-    init(baseURL: URL, modelName: String = "apple-foundationmodel") {
+    init(baseURL: URL, modelName: String = AppDefaults.modelName) {
         self.baseURL = baseURL
         self.modelName = modelName
     }
 
-    init(port: Int, modelName: String = "apple-foundationmodel") {
+    init(port: Int, modelName: String = AppDefaults.modelName) {
         self.baseURL = URL(string: "http://127.0.0.1:\(port)")!
         self.modelName = modelName
     }

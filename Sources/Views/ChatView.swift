@@ -31,6 +31,22 @@ struct ChatView: View {
 
             InputBar(viewModel: viewModel)
         }
+        .overlay(alignment: .top) {
+            if let notice = viewModel.contextTruncationNotice {
+                Text(notice)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.black.opacity(0.75))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
         .background(Color(white: 0.98))
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
@@ -76,15 +92,16 @@ struct ChatView: View {
                         // Context window divider
                         if let cutoff = viewModel.contextCutoffIndex, index == cutoff {
                             HStack(spacing: 8) {
-                                Rectangle().frame(height: 1).foregroundStyle(Color(white: 0.85))
-                                Text("context window")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
+                                Rectangle().frame(height: 1.5).foregroundStyle(.orange.opacity(0.4))
+                                Text("Above messages are outside the context window")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.orange)
                                     .fixedSize()
-                                Rectangle().frame(height: 1).foregroundStyle(Color(white: 0.85))
+                                Rectangle().frame(height: 1.5).foregroundStyle(.orange.opacity(0.4))
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
                         }
 
                         MessageBubble(
@@ -97,30 +114,17 @@ struct ChatView: View {
                         .id(msg.id)
                     }
 
-                    if viewModel.isStreaming {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                            Text("Thinking...")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                            Spacer()
-                        }
-                        .padding(.leading, 20)
-                        .id("streaming")
-                    }
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 20)
             }
             .onChange(of: viewModel.messages.count) {
                 withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(viewModel.messages.last?.id ?? "streaming", anchor: .bottom)
+                    proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
             .onChange(of: viewModel.messages.last?.content) {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo(viewModel.messages.last?.id, anchor: .bottom)
-                }
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }

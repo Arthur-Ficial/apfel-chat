@@ -15,13 +15,7 @@ final class AugeService: @unchecked Sendable {
     }
 
     static func findAugeBinary() -> String? {
-        if let resolved = ProcessInfo.processInfo.environment["PATH"]?
-            .split(separator: ":").map({ "\($0)/auge" })
-            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return resolved
-        }
-        let fallbacks = ["/usr/local/bin/auge", "/opt/homebrew/bin/auge"]
-        return fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
+        ServerManager.findBinary(named: "auge")
     }
 
     struct AnalysisResult: Sendable {
@@ -83,42 +77,68 @@ final class AugeService: @unchecked Sendable {
         let barcodeOutput = await barcode
         let facesOutput = await faces
 
-        // Parse OCR
+        // Parse OCR — auge v0.0.6: results.text or results.lines[]
         var ocrText: String?
         if let data = ocrOutput.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let results = json["results"] as? [String: Any] {
+            if let text = results["text"] as? String { ocrText = text }
+            else if let lines = results["lines"] as? [String] { ocrText = lines.joined(separator: "\n") }
+        } else if let data = ocrOutput.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // Legacy format: top-level text or results as array
             if let text = json["text"] as? String { ocrText = text }
-            else if let results = json["results"] as? [[String: Any]] {
-                ocrText = results.compactMap { $0["text"] as? String }.joined(separator: "\n")
+            else if let arr = json["results"] as? [[String: Any]] {
+                ocrText = arr.compactMap { $0["text"] as? String }.joined(separator: "\n")
             }
         }
 
-        // Parse classifications
+        // Parse classifications — auge v0.0.6: results.classifications[]
         var classifications: [(String, Double)] = []
         if let data = classifyOutput.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let results = json["results"] as? [[String: Any]] {
-            classifications = results.compactMap { item -> (String, Double)? in
+           let results = json["results"] as? [String: Any],
+           let items = results["classifications"] as? [[String: Any]] {
+            classifications = items.compactMap { item -> (String, Double)? in
+                guard let label = item["label"] as? String ?? item["identifier"] as? String,
+                      let confidence = item["confidence"] as? Double else { return nil }
+                return (label, confidence)
+            }
+        } else if let data = classifyOutput.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = json["results"] as? [[String: Any]] {
+            // Legacy format
+            classifications = items.compactMap { item -> (String, Double)? in
                 guard let label = item["label"] as? String ?? item["identifier"] as? String,
                       let confidence = item["confidence"] as? Double else { return nil }
                 return (label, confidence)
             }
         }
 
-        // Parse barcodes
+        // Parse barcodes — auge v0.0.6: results.barcodes[] or results[]
         var barcodes: [String] = []
         if let data = barcodeOutput.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let results = json["results"] as? [[String: Any]] {
-            barcodes = results.compactMap { $0["payload"] as? String ?? $0["value"] as? String }
+           let results = json["results"] as? [String: Any],
+           let items = results["barcodes"] as? [[String: Any]] {
+            barcodes = items.compactMap { $0["payload"] as? String ?? $0["value"] as? String }
+        } else if let data = barcodeOutput.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = json["results"] as? [[String: Any]] {
+            barcodes = items.compactMap { $0["payload"] as? String ?? $0["value"] as? String }
         }
 
-        // Parse faces
+        // Parse faces — auge v0.0.6: results.count or results.faces[]
         var faceCount = 0
         if let data = facesOutput.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let results = json["results"] as? [String: Any] {
+            if let count = results["count"] as? Int { faceCount = count }
+            else if let faces = results["faces"] as? [Any] { faceCount = faces.count }
+        } else if let data = facesOutput.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let count = json["count"] as? Int { faceCount = count }
-            else if let results = json["results"] as? [Any] { faceCount = results.count }
+            else if let arr = json["results"] as? [Any] { faceCount = arr.count }
         }
 
         return AnalysisResult(

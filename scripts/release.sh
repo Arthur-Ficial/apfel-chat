@@ -14,6 +14,12 @@ TAP_DIR="/opt/homebrew/Library/Taps/arthur-ficial/homebrew-tap"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+SKIP_SIGNING="${SKIP_SIGNING:-1}"
+SKIP_NOTARIZE="${SKIP_NOTARIZE:-1}"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
+APPLE_ID="${APPLE_ID:-}"
+TEAM_ID="${TEAM_ID:-}"
+
 echo "=== apfel-chat release v${VERSION} ==="
 
 # 1. Run tests
@@ -41,40 +47,43 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/apfel-chat"
 
-cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>apfel chat</string>
-    <key>CFBundleDisplayName</key>
-    <string>apfel chat</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.fullstackoptimization.apfel-chat</string>
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundleExecutable</key>
-    <string>apfel-chat</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>26.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>apfel chat needs microphone access for voice input.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>apfel chat needs speech recognition for voice input.</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.productivity</string>
-</dict>
-</plist>
-PLIST
+# Use project Info.plist with version substituted
+sed "s/1\.0\.0/${VERSION}/g" "$PROJECT_DIR/Info.plist" > "$APP_BUNDLE/Contents/Info.plist"
+
+# Copy icon if available
+if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
+    cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "  Icon: copied"
+fi
+
+# Copy privacy manifest
+if [[ -f "$PROJECT_DIR/PrivacyInfo.xcprivacy" ]]; then
+    cp "$PROJECT_DIR/PrivacyInfo.xcprivacy" "$APP_BUNDLE/Contents/Resources/PrivacyInfo.xcprivacy"
+    echo "  Privacy manifest: copied"
+fi
 
 echo "  App bundle: $APP_BUNDLE"
+
+# 3b. Code signing (optional)
+if [[ "$SKIP_SIGNING" != "1" && -n "$SIGNING_IDENTITY" ]]; then
+    echo ""
+    echo "[3b/8] Signing app bundle..."
+    ENTITLEMENTS="$PROJECT_DIR/apfel-chat.entitlements"
+    codesign --force --options runtime \
+        --sign "$SIGNING_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        --timestamp \
+        "$APP_BUNDLE/Contents/MacOS/apfel-chat"
+    codesign --force --options runtime \
+        --sign "$SIGNING_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        --timestamp \
+        "$APP_BUNDLE"
+    codesign --verify --deep --strict "$APP_BUNDLE"
+    echo "  Signed: $APP_BUNDLE"
+else
+    echo "  Signing: skipped (set SKIP_SIGNING=0 and SIGNING_IDENTITY to enable)"
+fi
 
 # 4. Create DMG
 echo ""
@@ -90,6 +99,21 @@ hdiutil create -volname "apfel chat ${VERSION}" \
   -ov -format UDZO \
   "$DMG_PATH" > /dev/null 2>&1
 echo "  DMG: $DMG_PATH"
+
+# 4b. Notarization (optional)
+if [[ "$SKIP_NOTARIZE" != "1" && -n "$APPLE_ID" && -n "$TEAM_ID" ]]; then
+    echo ""
+    echo "[4b/8] Notarizing DMG..."
+    xcrun notarytool submit "$DMG_PATH" \
+        --apple-id "$APPLE_ID" \
+        --team-id "$TEAM_ID" \
+        --keychain-profile "apfel-chat-notary" \
+        --wait
+    xcrun stapler staple "$DMG_PATH"
+    echo "  Notarized and stapled: $DMG_PATH"
+else
+    echo "  Notarization: skipped (set SKIP_NOTARIZE=0, APPLE_ID, TEAM_ID to enable)"
+fi
 
 # 5. Package tarball (for Homebrew)
 echo ""

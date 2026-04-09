@@ -11,21 +11,41 @@ final class ChatViewModel {
     var conversationId: String?
     var systemPrompt: String?
     var settings: ModelSettings = ModelSettings()
+    var autoSpeak: Bool = AppDefaults.autoSpeak
+    var ttsLanguage: String = AppDefaults.ttsLanguage
     var contextWindow: Int?
     var augeService: AugeService?
     var isAnalyzingImage: Bool = false
+    var showFilePicker: Bool = false
+    private(set) var contextCutoffIndex: Int?
+    var contextTruncationNotice: String?
+    private var shownTruncationForConversations: Set<String> = []
 
-    var contextCutoffIndex: Int? {
-        guard let window = contextWindow, !messages.isEmpty else { return nil }
+    func recomputeContextCutoff() {
+        guard let window = contextWindow, !messages.isEmpty else {
+            contextCutoffIndex = nil
+            return
+        }
         var total = 0
-        // Walk from newest to oldest
         for i in stride(from: messages.count - 1, through: 0, by: -1) {
             total += messages[i].tokenCount ?? 0
             if total > window {
-                return i + 1  // This index and below are out of context
+                let newCutoff = i + 1
+                // Show one-time notice when cutoff first appears in this conversation
+                let convId = conversationId ?? ""
+                if contextCutoffIndex == nil && !shownTruncationForConversations.contains(convId) {
+                    shownTruncationForConversations.insert(convId)
+                    contextTruncationNotice = "Older messages are now outside the context window"
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(4))
+                        contextTruncationNotice = nil
+                    }
+                }
+                contextCutoffIndex = newCutoff
+                return
             }
         }
-        return nil  // All fit
+        contextCutoffIndex = nil
     }
 
     private let chatService: ChatService
@@ -87,10 +107,20 @@ final class ChatViewModel {
             messages[assistantIdx].isStreaming = false
             messages[assistantIdx].durationMs = Int(Date().timeIntervalSince(start) * 1000)
             try? await persistence.addMessage(messages[assistantIdx], to: convId)
+            recomputeContextCutoff()
 
-            // Auto-title after first exchange
+            // Auto-speak the response if enabled
+            if autoSpeak, let tts = speechOutput, !messages[assistantIdx].content.isEmpty {
+                tts.speak(messages[assistantIdx].content, languageCode: ttsLanguage)
+            }
+
+            // Auto-title after first exchange (deferred so it doesn't block UI)
             if isFirstMessage {
-                await generateTitle(from: text, conversationId: convId)
+                let capturedText = text
+                let capturedConvId = convId
+                Task { [weak self] in
+                    await self?.generateTitle(from: capturedText, conversationId: capturedConvId)
+                }
             }
         } catch {
             // If assistant message is empty, remove it; otherwise keep partial content
@@ -107,8 +137,10 @@ final class ChatViewModel {
 
     func loadMessages() async {
         guard let convId = conversationId else { return }
+        contextTruncationNotice = nil
         do {
             messages = try await persistence.messages(for: convId)
+            recomputeContextCutoff()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -117,6 +149,7 @@ final class ChatViewModel {
     func clear() {
         messages = []
         errorMessage = nil
+        contextTruncationNotice = nil
     }
 
     // MARK: - Speech
@@ -140,7 +173,7 @@ final class ChatViewModel {
     func speakLastResponse() {
         guard let tts = speechOutput else { return }
         guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else { return }
-        tts.speak(lastAssistant.content, languageCode: "en-US")
+        tts.speak(lastAssistant.content, languageCode: ttsLanguage)
     }
 
     // MARK: - Image Analysis
@@ -199,14 +232,8 @@ final class ChatViewModel {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else { return }
 
-        do {
-            let conversations = try await persistence.listConversations()
-            if var conv = conversations.first(where: { $0.id == conversationId }) {
-                conv.title = cleanTitle
-                try await persistence.updateConversation(conv)
-            }
-        } catch {
-            // Title update is best-effort; don't surface this error
-        }
+        // Update directly — no need to list all conversations
+        let conv = Conversation(id: conversationId, title: cleanTitle)
+        try? await persistence.updateConversation(conv)
     }
 }

@@ -10,7 +10,7 @@ final class OnDeviceSpeechOutput: NSObject, SpeechOutput, AVSpeechSynthesizerDel
         synthesizer.delegate = self
     }
 
-    func speak(_ text: String, languageCode: String = "en-US") {
+    func speak(_ text: String, languageCode: String = AppDefaults.ttsLanguage) {
         synthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = bestVoice(for: languageCode)

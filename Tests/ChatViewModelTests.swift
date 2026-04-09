@@ -156,6 +156,9 @@ struct ChatViewModelTests {
         vm.currentInput = "Tell me about quantum physics"
         await vm.send()
 
+        // Title generation is deferred via Task — give it a moment to complete
+        try await Task.sleep(for: .milliseconds(100))
+
         // The mock service was called twice: once for chat, once for title generation
         #expect(chatService.sendCallCount == 2)
 
@@ -206,6 +209,7 @@ struct ChatViewModelTests {
             Message(conversationId: "c1", role: .user, content: "Second", tokenCount: 30),
             Message(conversationId: "c1", role: .assistant, content: "Response 2", tokenCount: 30),
         ]
+        vm.recomputeContextCutoff()
         // 30+30+30+30 = 120 > 100, so first message should be out of context
         // Walking backward: msg3(30) + msg2(30) + msg1(30) = 90 fits, msg0(30) would make 120 > 100
         let cutoff = vm.contextCutoffIndex
@@ -219,6 +223,7 @@ struct ChatViewModelTests {
         vm.messages = [
             Message(conversationId: "c1", role: .user, content: "Hello", tokenCount: 50),
         ]
+        vm.recomputeContextCutoff()
         #expect(vm.contextCutoffIndex == nil)
     }
 
@@ -230,6 +235,7 @@ struct ChatViewModelTests {
             Message(conversationId: "c1", role: .user, content: "Hello", tokenCount: 10),
             Message(conversationId: "c1", role: .assistant, content: "Hi", tokenCount: 10),
         ]
+        vm.recomputeContextCutoff()
         #expect(vm.contextCutoffIndex == nil)  // nil means all fit
     }
 
@@ -250,6 +256,16 @@ struct ChatViewModelTests {
         let url = URL(fileURLWithPath: "/tmp/test.png")
         await vm.handleImageDrop(urls: [url])
         #expect(vm.messages.isEmpty)
+    }
+
+    @Test("showFilePicker can be toggled")
+    func filePickerToggle() async throws {
+        let (vm, _, _) = makeVM()
+        #expect(vm.showFilePicker == false)
+        vm.showFilePicker = true
+        #expect(vm.showFilePicker == true)
+        vm.showFilePicker = false
+        #expect(vm.showFilePicker == false)
     }
 
     @Test("isAnalyzingImage resets after drop")

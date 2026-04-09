@@ -17,6 +17,13 @@ struct ConversationListView: View {
                 }
 
             List(selection: $viewModel.selectedId) {
+                if viewModel.conversations.isEmpty && !viewModel.searchQuery.isEmpty {
+                    Text("No results for \"\(viewModel.searchQuery)\"")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 20)
+                }
                 ForEach(viewModel.conversations) { conv in
                     if editingId == conv.id {
                         TextField("Title", text: $editTitle)
@@ -33,7 +40,7 @@ struct ConversationListView: View {
                             Text(conv.title)
                                 .font(.body)
                                 .lineLimit(1)
-                            Text(conv.updatedAt, style: .relative)
+                            Text(conv.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }

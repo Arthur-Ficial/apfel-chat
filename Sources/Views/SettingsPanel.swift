@@ -2,13 +2,12 @@ import SwiftUI
 
 struct SettingsPanel: View {
     @Bindable var viewModel: SettingsViewModel
-    @State private var showAdvanced = false
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar with close button
+            // Title bar
             HStack {
                 Text("Settings")
                     .font(.headline)
@@ -23,26 +22,54 @@ struct SettingsPanel: View {
             .padding(.top, 16)
             .padding(.bottom, 8)
 
+            TabView {
+                generalTab
+                    .tabItem { Label("General", systemImage: "gearshape") }
+
+                advancedTab
+                    .tabItem { Label("Advanced", systemImage: "wrench") }
+            }
+        }
+        .frame(minWidth: 360, idealWidth: 420, maxWidth: 520, minHeight: 400, idealHeight: 480, maxHeight: 700)
+        .onDisappear { viewModel.save() }
+    }
+
+    // MARK: - General Tab
+
+    private var generalTab: some View {
         Form {
-            Section("General") {
-                VStack(alignment: .leading) {
+            Section("Model") {
+                LabeledContent {
                     HStack {
-                        Text("Temperature")
-                        Spacer()
-                        Text(String(format: "%.1f", viewModel.temperature ?? 0.7))
+                        Slider(value: temperatureBinding, in: 0...2, step: 0.1)
+                            .frame(maxWidth: 160)
+                        Text(String(format: "%.1f", viewModel.temperature ?? AppDefaults.temperature))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                            .frame(width: 30)
                     }
-                    Slider(value: temperatureBinding, in: 0...2, step: 0.1)
+                } label: {
+                    Text("Temperature")
                 }
-                HStack {
-                    Text("Max Tokens")
-                    Spacer()
-                    TextField("default", value: $viewModel.maxTokens, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
+
+                LabeledContent("Max Tokens") {
+                    HStack(spacing: 6) {
+                        TextField("no limit", text: maxTokensBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                            .multilineTextAlignment(.trailing)
+                        if viewModel.maxTokens != nil {
+                            Button(action: { viewModel.maxTokens = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 14))
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Reset to no limit")
+                        }
+                    }
                 }
+
                 Toggle("JSON Mode", isOn: $viewModel.jsonMode)
             }
 
@@ -59,32 +86,65 @@ struct SettingsPanel: View {
                 }
                 Toggle("Auto-speak responses", isOn: $viewModel.autoSpeak)
             }
+        }
+        .formStyle(.grouped)
+    }
 
-            DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-                TextField("Server URL", text: $viewModel.baseURL)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Model Name", text: $viewModel.modelName)
-                    .textFieldStyle(.roundedBorder)
-                HStack {
-                    Text("Seed")
-                    Spacer()
-                    TextField("random", value: $viewModel.seed, format: .number)
+    // MARK: - Advanced Tab
+
+    private var advancedTab: some View {
+        Form {
+            Section("Server") {
+                LabeledContent("URL") {
+                    TextField("", text: $viewModel.baseURL)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
+                        .frame(width: 200)
                         .multilineTextAlignment(.trailing)
+                }
+                LabeledContent("Model") {
+                    TextField("", text: $viewModel.modelName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+
+            Section("Reproducibility") {
+                LabeledContent("Seed") {
+                    HStack(spacing: 6) {
+                        TextField("random", value: $viewModel.seed, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                            .multilineTextAlignment(.trailing)
+                        if viewModel.seed != nil {
+                            Button(action: { viewModel.seed = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 14))
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Reset to random")
+                        }
+                    }
                 }
             }
         }
         .formStyle(.grouped)
-        }
-        .frame(width: 420, height: 500)
-        .onDisappear { viewModel.save() }
     }
+
+    // MARK: - Bindings
 
     private var temperatureBinding: Binding<Double> {
         Binding(
-            get: { viewModel.temperature ?? 0.7 },
+            get: { viewModel.temperature ?? AppDefaults.temperature },
             set: { viewModel.temperature = $0 }
+        )
+    }
+
+    private var maxTokensBinding: Binding<String> {
+        Binding(
+            get: { viewModel.maxTokens.map { "\($0)" } ?? "" },
+            set: { viewModel.maxTokens = Int($0) }
         )
     }
 }

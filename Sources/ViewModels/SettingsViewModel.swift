@@ -5,13 +5,13 @@ import SwiftUI
 @MainActor
 final class SettingsViewModel {
     var temperature: Double?
-    var maxTokens: Int?
-    var seed: Int?
-    var jsonMode: Bool = false
-    var baseURL: String = "http://127.0.0.1:11440"
-    var modelName: String = "apple-foundationmodel"
-    var ttsLanguage: String = "en-US"
-    var autoSpeak: Bool = false
+    var maxTokens: Int? = AppDefaults.maxTokens
+    var seed: Int? = AppDefaults.seed
+    var jsonMode: Bool = AppDefaults.jsonMode
+    var baseURL: String = AppDefaults.baseURL
+    var modelName: String = AppDefaults.modelName
+    var ttsLanguage: String = AppDefaults.ttsLanguage
+    var autoSpeak: Bool = AppDefaults.autoSpeak
     var showSettings: Bool = false
 
     private let defaults: UserDefaults

@@ -6,11 +6,11 @@ struct ApfelChatApp: App {
     @State private var serverManager = ServerManager()
 
     init() {
-        // CRITICAL: When running as a bare binary (not .app bundle),
-        // macOS won't give us foreground/keyboard focus without this.
-        // Without it, clicking the window does nothing — focus stays in the terminal.
-        NSApplication.shared.setActivationPolicy(.regular)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        if !isRunningAsAppBundle() {
+            // Only needed for bare binary — .app bundles get focus automatically
+            NSApplication.shared.setActivationPolicy(.regular)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
     }
     @State private var chatService: ApfelChatService?
     @State private var persistence: SQLitePersistence?
@@ -58,30 +58,23 @@ struct ApfelChatApp: App {
             ChatView(viewModel: chatVM)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
-                        HStack(spacing: 8) {
-                            if chatVM.speechOutput != nil {
-                                Button(action: {
-                                    if chatVM.speechOutput?.isSpeaking == true {
-                                        chatVM.speechOutput?.stop()
-                                    } else {
-                                        chatVM.speakLastResponse()
-                                    }
-                                }) {
-                                    Image(systemName: chatVM.speechOutput?.isSpeaking == true ? "speaker.wave.3.fill" : "speaker.wave.2")
-                                }
-                                .help("Read last response aloud")
-                            }
-                            Button(action: { settingsVM.showSettings = true }) {
-                                Image(systemName: "gearshape")
-                            }
-                            .help("Settings")
+                        Button(action: { settingsVM.showSettings = true }) {
+                            Image(systemName: "gearshape")
                         }
+                        .help("Settings")
                     }
                 }
         }
         .navigationTitle("apfel chat")
         .sheet(isPresented: $settingsVM.showSettings) {
             SettingsPanel(viewModel: settingsVM)
+        }
+        .onChange(of: settingsVM.showSettings) { _, isShowing in
+            if !isShowing {
+                chatVM.settings = settingsVM.toModelSettings()
+                chatVM.autoSpeak = settingsVM.autoSpeak
+                chatVM.ttsLanguage = settingsVM.ttsLanguage
+            }
         }
     }
 
@@ -149,6 +142,8 @@ struct ApfelChatApp: App {
             let listVM = ConversationListViewModel(persistence: db)
             let chatVM = ChatViewModel(chatService: service, persistence: db, speechInput: stt, speechOutput: tts)
             chatVM.settings = settingsVM.toModelSettings()
+            chatVM.autoSpeak = settingsVM.autoSpeak
+            chatVM.ttsLanguage = settingsVM.ttsLanguage
             chatVM.contextWindow = serverContextWindow
             chatVM.augeService = AugeService()
 

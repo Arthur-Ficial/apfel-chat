@@ -39,11 +39,8 @@ enum SSEParser {
         if payload == "[DONE]" { return nil }
         guard let data = payload.data(using: .utf8) else { return nil }
 
-        if (try? JSONDecoder().decode(ErrorResponse.self, from: data)) != nil {
-            return nil
-        }
-
         guard let chunk = try? JSONDecoder().decode(ChunkResponse.self, from: data) else {
+            // Not a valid chunk — could be an error response or malformed data
             return nil
         }
 

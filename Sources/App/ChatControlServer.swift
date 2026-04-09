@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 @MainActor
 class ChatControlServer {
@@ -7,7 +8,7 @@ class ChatControlServer {
     let settingsVM: SettingsViewModel
     private var serverTask: Task<Void, Never>?
 
-    static nonisolated let port: UInt16 = 11441
+    static nonisolated let port: UInt16 = AppDefaults.apiPort
 
     init(chatVM: ChatViewModel, listVM: ConversationListViewModel, settingsVM: SettingsViewModel) {
         self.chatVM = chatVM
@@ -97,6 +98,54 @@ class ChatControlServer {
             response = await getSettings(settingsVM)
         case ("POST", "/settings"):
             response = await updateSettings(body, settingsVM: settingsVM)
+        case ("POST", "/settings/show"):
+            await MainActor.run { settingsVM.showSettings = true }
+            response = ok()
+        case ("POST", "/settings/hide"):
+            await MainActor.run { settingsVM.showSettings = false }
+            response = ok()
+
+        // === INPUT ===
+        case ("POST", "/input"):
+            guard let obj = parseJSON(body), let text = obj["text"] as? String else {
+                response = err("Need {\"text\": \"...\"}"); break
+            }
+            await MainActor.run { chatVM.currentInput = text }
+            response = ok()
+        case ("GET", "/input"):
+            let text = await MainActor.run { chatVM.currentInput }
+            response = jsonDict(["text": text])
+
+        // === MIC ===
+        case ("POST", "/mic/toggle"):
+            await chatVM.toggleListening()
+            let listening = await MainActor.run { chatVM.speechInput?.isListening ?? false }
+            response = jsonDict(["status": "ok", "listening": listening])
+        case ("GET", "/mic"):
+            let listening = await MainActor.run { chatVM.speechInput?.isListening ?? false }
+            let available = await MainActor.run { chatVM.speechInput != nil }
+            response = jsonDict(["listening": listening, "available": available])
+
+        // === IMAGE ===
+        case ("POST", "/attach"):
+            await MainActor.run { chatVM.showFilePicker = true }
+            response = ok()
+        case ("POST", "/image"):
+            guard let obj = parseJSON(body), let path = obj["path"] as? String else {
+                response = err("Need {\"path\": \"/path/to/image.png\"}"); break
+            }
+            let url = URL(fileURLWithPath: path)
+            await chatVM.handleImageDrop(urls: [url])
+            let count = await MainActor.run { chatVM.messages.count }
+            response = jsonDict(["status": "ok", "messages_count": count])
+
+        // === WINDOW ===
+        case ("POST", "/window/focus"):
+            await MainActor.run {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
+            }
+            response = ok()
 
         // === SPEECH ===
         case ("POST", "/speak"):
@@ -104,6 +153,10 @@ class ChatControlServer {
         case ("POST", "/stop-speaking"):
             await MainActor.run { chatVM.speechOutput?.stop() }
             response = ok()
+        case ("GET", "/speech"):
+            let speaking = await MainActor.run { chatVM.speechOutput?.isSpeaking ?? false }
+            let autoSpeak = await MainActor.run { chatVM.autoSpeak }
+            response = jsonDict(["speaking": speaking, "auto_speak": autoSpeak])
 
         // === HELP ===
         default:
@@ -253,8 +306,10 @@ class ChatControlServer {
         guard let obj = parseJSON(body) else { return err("Invalid JSON") }
         await MainActor.run {
             if let v = obj["temperature"] as? Double { settingsVM.temperature = v }
-            if let v = obj["max_tokens"] as? Int { settingsVM.maxTokens = v }
-            if let v = obj["seed"] as? Int { settingsVM.seed = v }
+            if obj["max_tokens"] is NSNull { settingsVM.maxTokens = nil }
+            else if let v = obj["max_tokens"] as? Int { settingsVM.maxTokens = v }
+            if obj["seed"] is NSNull { settingsVM.seed = nil }
+            else if let v = obj["seed"] as? Int { settingsVM.seed = v }
             if let v = obj["json_mode"] as? Bool { settingsVM.jsonMode = v }
             if let v = obj["base_url"] as? String { settingsVM.baseURL = v }
             if let v = obj["model_name"] as? String { settingsVM.modelName = v }
@@ -271,7 +326,7 @@ class ChatControlServer {
         guard let obj = parseJSON(body), let text = obj["text"] as? String else {
             return err("Need {\"text\": \"...\"}")
         }
-        let lang = obj["language"] as? String ?? "en-US"
+        let lang = obj["language"] as? String ?? AppDefaults.ttsLanguage
         await MainActor.run { chatVM.speechOutput?.speak(text, languageCode: lang) }
         return jsonDict(["status": "speaking", "text": text])
     }
@@ -297,8 +352,18 @@ class ChatControlServer {
                 "POST /system-prompt          Set system prompt: {\"prompt\": \"text\"}",
                 "GET  /settings               Get settings",
                 "POST /settings               Update settings: {\"temperature\": 0.7, ...}",
+                "POST /settings/show          Open settings panel",
+                "POST /settings/hide          Close settings panel",
+                "POST /input                  Set input text: {\"text\": \"...\"}",
+                "GET  /input                  Get current input text",
+                "POST /mic/toggle             Toggle microphone listening",
+                "GET  /mic                    Mic status",
+                "POST /attach                 Open file picker",
+                "POST /image                  Analyze image: {\"path\": \"/path/to/img\"}",
+                "POST /window/focus           Bring window to front",
                 "POST /speak                  Speak text: {\"text\": \"...\"}",
                 "POST /stop-speaking          Stop TTS",
+                "GET  /speech                 Speech status",
             ]
         ])
     }

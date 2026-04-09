@@ -14,7 +14,7 @@ final class OnDeviceSpeechInput: SpeechInput {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var userStoppedSession = false
 
-    init(locale: Locale = Locale(identifier: "en-US")) {
+    init(locale: Locale = Locale(identifier: AppDefaults.ttsLanguage)) {
         recognizer = SFSpeechRecognizer(locale: locale)
     }
 
