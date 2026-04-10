@@ -167,6 +167,9 @@ class ChatControlServer {
         case ("POST", "/update/install"):
             await MainActor.run { settingsVM.installUpdate() }
             response = await getUpdateStatus(settingsVM)
+        case ("POST", "/update/relaunch"):
+            response = jsonDict(["status": "relaunching"])
+            Task { @MainActor in settingsVM.relaunch() }
 
         // === HELP ===
         default:
@@ -425,6 +428,7 @@ class ChatControlServer {
                 "GET  /update                 Update status and latest version",
                 "POST /update/check           Check GitHub for latest release",
                 "POST /update/install         Install update (brew upgrade or opens download page)",
+                "POST /update/relaunch        Relaunch app to apply installed update",
             ]
         ])
     }

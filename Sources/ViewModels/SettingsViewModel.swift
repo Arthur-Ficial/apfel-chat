@@ -160,11 +160,15 @@ final class SettingsViewModel {
     func relaunch() {
         let pid = ProcessInfo.processInfo.processIdentifier
         let bundlePath = Bundle.main.bundleURL.path
+        // Double-fork: ( ) & reparents the subshell to launchd immediately,
+        // so it survives this process exiting.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open '\(bundlePath)'"]
+        process.arguments = ["-c", "(while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open '\(bundlePath)') &"]
         try? process.run()
-        NSApplication.shared.terminate(nil)
+        // Small delay lets the HTTP response flush before exit.
+        Thread.sleep(forTimeInterval: 0.15)
+        exit(0)
     }
 
     // MARK: - Settings persistence

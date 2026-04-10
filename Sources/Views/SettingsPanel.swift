@@ -81,37 +81,22 @@ struct SettingsPanel: View {
                     }
 
                 case .installing(let version):
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text("Installing \(version)...").foregroundStyle(.secondary)
-                        }
-                        if !viewModel.brewUpgradeOutput.isEmpty {
-                            ScrollView {
-                                Text(viewModel.brewUpgradeOutput)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }.frame(maxHeight: 80)
-                        }
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Installing \(version)...").foregroundStyle(.secondary)
                     }
 
                 case .installed(let version):
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                            Text("Version \(version) installed").foregroundStyle(.secondary)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                Text("Version \(version) installed").foregroundStyle(.secondary)
+                            }
+                            Button("Relaunch to Apply") { viewModel.relaunch() }
+                                .buttonStyle(.borderedProminent)
                         }
-                        if !viewModel.brewUpgradeOutput.isEmpty {
-                            ScrollView {
-                                Text(viewModel.brewUpgradeOutput)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }.frame(maxHeight: 60)
-                        }
-                        Button("Relaunch to Apply") { viewModel.relaunch() }
-                            .buttonStyle(.borderedProminent)
+                        Spacer()
                     }
 
                 case .error(let message):
