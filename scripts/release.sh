@@ -100,8 +100,8 @@ fail() { print "    [FAIL] $1" >&2; FAIL=1; }
 
 # 1. GitHub release exists and has all expected assets
 RELEASE_TMPFILE="$(mktemp)"
-gh release view "$TAG" --json assets,draft,tagName > "$RELEASE_TMPFILE" 2>/dev/null
-[[ "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['draft'])" "$RELEASE_TMPFILE")" == "False" ]] \
+gh release view "$TAG" --json assets,isDraft,tagName > "$RELEASE_TMPFILE" 2>/dev/null
+[[ "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['isDraft'])" "$RELEASE_TMPFILE")" == "False" ]] \
     && pass "GitHub release $TAG is published" || fail "GitHub release $TAG is draft or missing"
 
 for ASSET in "${APP_NAME}-${TAG}-macos-${ARCH}.zip" \
