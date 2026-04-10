@@ -14,7 +14,6 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 2) {
-                // Bubble
                 VStack(alignment: .leading, spacing: 0) {
                     contentView
                 }
@@ -25,7 +24,6 @@ struct MessageBubble: View {
                 .clipShape(bubbleShape)
                 .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
 
-                // Metadata + Copy row
                 HStack(spacing: 6) {
                     if let ms = message.durationMs {
                         Text("\(ms)ms")
@@ -73,69 +71,70 @@ struct MessageBubble: View {
         RoundedRectangle(cornerRadius: 18)
     }
 
-    // MARK: - Content (cache-backed rendering)
-
     @ViewBuilder
     private var contentView: some View {
-        // cachedRender is O(1) on a cache hit; parse+render only runs once per unique content string.
-        let cached = MarkdownRenderer.cachedRender(for: message.content)
-        if cached.isJSON {
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(cached.prettyJSON)
-                    .font(.system(size: 13, design: .monospaced))
-                    .textSelection(.enabled)
-            }
+        if message.isStreaming {
+            Text(message.content.isEmpty ? " " : message.content)
+                .font(.system(size: 14))
+                .lineSpacing(3)
+                .textSelection(.enabled)
         } else {
-            let blocks = cached.blocks
-            if blocks.isEmpty {
-                // Empty or mid-stream placeholder
-                Text(message.content)
-                    .font(.system(size: 14))
-                    .textSelection(.enabled)
-            } else if blocks.count == 1 && blocks[0].type == .text {
-                Text(blocks[0].rendered ?? AttributedString(blocks[0].content))
-                    .font(.system(size: 14))
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
+            let cached = MarkdownRenderer.cachedRender(for: message.content)
+            if cached.isJSON {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(cached.prettyJSON)
+                        .font(.system(size: 13, design: .monospaced))
+                        .textSelection(.enabled)
+                }
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(blocks) { block in
-                        switch block.type {
-                        case .text:
-                            Text(block.rendered ?? AttributedString(block.content))
-                                .font(.system(size: 14))
-                                .lineSpacing(3)
-                                .textSelection(.enabled)
-                        case .code:
-                            VStack(alignment: .leading, spacing: 0) {
-                                if let lang = block.language {
-                                    HStack {
-                                        Text(lang)
-                                            .font(.system(size: 11, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                        Spacer()
+                let blocks = cached.blocks
+                if blocks.isEmpty {
+                    Text(message.content)
+                        .font(.system(size: 14))
+                        .textSelection(.enabled)
+                } else if blocks.count == 1 && blocks[0].type == .text {
+                    Text(blocks[0].rendered ?? AttributedString(blocks[0].content))
+                        .font(.system(size: 14))
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(blocks) { block in
+                            switch block.type {
+                            case .text:
+                                Text(block.rendered ?? AttributedString(block.content))
+                                    .font(.system(size: 14))
+                                    .lineSpacing(3)
+                                    .textSelection(.enabled)
+                            case .code:
+                                VStack(alignment: .leading, spacing: 0) {
+                                    if let lang = block.language {
+                                        HStack {
+                                            Text(lang)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                            Spacer()
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(Color(white: 0.88))
                                     }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color(white: 0.88))
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        Text(block.content)
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .padding(10)
+                                    }
+                                    .background(Color(white: 0.93))
                                 }
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    Text(block.content)
-                                        .font(.system(size: 12, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .padding(10)
-                                }
-                                .background(Color(white: 0.93))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
                 }
             }
         }
     }
-
-    // MARK: - iMessage-style colors
 
     private var bubbleBackground: Color {
         switch message.role {
@@ -146,8 +145,6 @@ struct MessageBubble: View {
     }
 }
 
-// Allows SwiftUI to skip body calls when message + context state are unchanged.
-// Both Message and Bool are Sendable, so comparing them is safe from any isolation.
 extension MessageBubble: Equatable {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.message == rhs.message && lhs.isOutOfContext == rhs.isOutOfContext

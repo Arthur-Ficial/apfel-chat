@@ -8,7 +8,6 @@ enum InputFocus {
 struct InputBar: View {
     @Bindable var viewModel: ChatViewModel
     @FocusState private var focused: InputFocus?
-    // viewModel.showFilePicker lives on viewModel so API can trigger it
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +27,6 @@ struct InputBar: View {
             }
             Divider()
             HStack(alignment: .center, spacing: 10) {
-                // Mic button
                 if viewModel.speechInput != nil {
                     Button(action: { Task { await viewModel.toggleListening() } }) {
                         Image(systemName: viewModel.speechInput?.isListening == true ? "stop.circle.fill" : "mic.fill")
@@ -42,7 +40,6 @@ struct InputBar: View {
                     .help(viewModel.speechInput?.isListening == true ? "Stop listening" : "Voice input")
                 }
 
-                // Attach image button
                 if viewModel.augeService != nil {
                     Button(action: { viewModel.showFilePicker = true }) {
                         Image(systemName: "paperclip")
@@ -66,38 +63,43 @@ struct InputBar: View {
                     }
                 }
 
-                // Text input
-                TextField("Type a message, press Enter to send...", text: $viewModel.currentInput)
+                TextField(inputPlaceholder, text: $viewModel.currentInput)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 15))
                     .focused($focused, equals: .message)
                     .frame(minHeight: 36)
                     .onSubmit {
+                        if viewModel.isStreaming {
+                            viewModel.cancelStreaming()
+                        } else {
+                            Task {
+                                await viewModel.send()
+                                focused = .message
+                            }
+                        }
+                    }
+
+                Button(action: {
+                    if viewModel.isStreaming {
+                        viewModel.cancelStreaming()
+                    } else {
                         Task {
                             await viewModel.send()
                             focused = .message
                         }
                     }
-
-                // Send button
-                Button(action: {
-                    Task {
-                        await viewModel.send()
-                        focused = .message
-                    }
                 }) {
-                    Image(systemName: "arrow.up")
+                    Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(canSend ? .white : .gray)
+                        .foregroundStyle(buttonForeground)
                         .frame(width: 36, height: 36)
-                        .background(canSend ? Color(red: 0.0, green: 0.48, blue: 1.0) : Color(nsColor: .controlBackgroundColor))
+                        .background(buttonBackground)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.borderless)
-                .disabled(!canSend)
-                .help("Send message")
+                .disabled(!viewModel.isStreaming && !canSend)
+                .help(viewModel.isStreaming ? "Stop response" : "Send message")
 
-                // Audio auto-speak toggle
                 if viewModel.speechOutput != nil {
                     Button(action: { viewModel.autoSpeak.toggle() }) {
                         Image(systemName: viewModel.autoSpeak ? "speaker.wave.2.fill" : "speaker.fill")
@@ -123,5 +125,27 @@ struct InputBar: View {
         !viewModel.currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !viewModel.isStreaming
             && !viewModel.isAnalyzingImage
+            && viewModel.isServiceReady
+    }
+
+    private var inputPlaceholder: String {
+        viewModel.isServiceReady ? "Type a message, press Enter to send..." : "Starting on-device AI..."
+    }
+
+    private var buttonForeground: Color {
+        if viewModel.isStreaming || canSend {
+            return .white
+        }
+        return .gray
+    }
+
+    private var buttonBackground: Color {
+        if viewModel.isStreaming {
+            return .red
+        }
+        if canSend {
+            return Color(red: 0.0, green: 0.48, blue: 1.0)
+        }
+        return Color(nsColor: .controlBackgroundColor)
     }
 }

@@ -61,5 +61,6 @@ struct ConversationListViewModelTests {
         await vm.loadConversations()
         await vm.search(query: "Swift")
         #expect(vm.searchResults.count == 1)
+        #expect(vm.searchResults[0].id == conv.id)
     }
 }

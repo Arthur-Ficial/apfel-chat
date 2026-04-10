@@ -7,19 +7,19 @@ struct ApfelChatApp: App {
 
     init() {
         if !isRunningAsAppBundle() {
-            // Only needed for bare binary — .app bundles get focus automatically
             NSApplication.shared.setActivationPolicy(.regular)
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
-    @State private var chatService: ApfelChatService?
+
     @State private var persistence: SQLitePersistence?
     @State private var conversationListVM: ConversationListViewModel?
     @State private var chatVM: ChatViewModel?
     @State private var settingsVM = SettingsViewModel()
-    @State private var serverError: String?
+    @State private var startupError: String?
     @State private var isReady = false
     @State private var controlServer: ChatControlServer?
+    @State private var didStart = false
     private let enableAPI = CommandLine.arguments.contains("--api")
 
     var body: some Scene {
@@ -27,14 +27,18 @@ struct ApfelChatApp: App {
             Group {
                 if isReady, let listVM = conversationListVM, let chatVM = chatVM {
                     mainContent(listVM: listVM, chatVM: chatVM)
-                } else if let error = serverError {
+                } else if let error = startupError {
                     errorView(error)
                 } else {
                     loadingView
                 }
             }
             .frame(minWidth: 700, minHeight: 500)
-            .task { await startup() }
+            .task {
+                guard !didStart else { return }
+                didStart = true
+                await startup()
+            }
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 900, height: 650)
@@ -98,7 +102,7 @@ struct ApfelChatApp: App {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button("Retry") {
-                serverError = nil
+                startupError = nil
                 Task { await startup() }
             }
         }
@@ -111,54 +115,22 @@ struct ApfelChatApp: App {
             let db = try SQLitePersistence()
             self.persistence = db
 
-            guard let port = await serverManager.start() else {
-                if case .failed(let msg) = serverManager.state {
-                    serverError = msg
-                } else {
-                    serverError = "Failed to start server"
-                }
-                return
-            }
-
-            let service = ApfelChatService(port: port)
-            self.chatService = service
-
-            var serverContextWindow: Int?
-            if let health = try? await service.healthCheck() {
-                serverContextWindow = health.contextWindow
-            }
-
-            let stt: any SpeechInput
-            if let ohrPath = ServerManager.findOhrBinary() {
-                stt = OhrSpeechInput(ohrPath: ohrPath, languageCode: settingsVM.ttsLanguage)
-                printToStderr("apfel-chat: using ohr for speech input")
-            } else {
-                stt = OnDeviceSpeechInput()
-                printToStderr("apfel-chat: using on-device speech input")
-            }
-            let tts = OnDeviceSpeechOutput()
-
             let listVM = ConversationListViewModel(persistence: db)
-            let chatVM = ChatViewModel(chatService: service, persistence: db, speechInput: stt, speechOutput: tts)
+            let chatVM = ChatViewModel(persistence: db)
             chatVM.settings = settingsVM.toModelSettings()
             chatVM.autoSpeak = settingsVM.autoSpeak
             chatVM.ttsLanguage = settingsVM.ttsLanguage
-            chatVM.contextWindow = serverContextWindow
-            chatVM.augeService = AugeService()
-
-            await listVM.loadConversations()
-
-            if listVM.conversations.isEmpty {
-                await listVM.createConversation()
-            }
-            if let first = listVM.conversations.first {
-                listVM.selectedId = first.id
-                chatVM.switchTo(conversationId: first.id)
+            chatVM.onConversationListInvalidation = {
+                await listVM.loadConversations()
             }
 
             self.conversationListVM = listVM
             self.chatVM = chatVM
             self.isReady = true
+
+            async let initialLoad: Void = loadInitialConversationState(listVM: listVM, chatVM: chatVM)
+            async let serviceLoad: Void = connectServices(chatVM: chatVM)
+            _ = await (initialLoad, serviceLoad)
 
             if enableAPI {
                 let ctrl = ChatControlServer(chatVM: chatVM, listVM: listVM, settingsVM: settingsVM)
@@ -166,7 +138,55 @@ struct ApfelChatApp: App {
                 self.controlServer = ctrl
             }
         } catch {
-            serverError = "Database error: \(error.localizedDescription)"
+            startupError = "Database error: \(error.localizedDescription)"
         }
+    }
+
+    private func loadInitialConversationState(
+        listVM: ConversationListViewModel,
+        chatVM: ChatViewModel
+    ) async {
+        await listVM.loadConversations()
+
+        if listVM.conversations.isEmpty {
+            await listVM.createConversation()
+        }
+
+        if let first = listVM.conversations.first {
+            listVM.selectedId = first.id
+            chatVM.switchTo(conversationId: first.id)
+        }
+    }
+
+    private func connectServices(chatVM: ChatViewModel) async {
+        chatVM.setServiceStatus("Starting on-device AI...")
+
+        guard let port = await serverManager.start() else {
+            if case .failed(let message) = serverManager.state {
+                chatVM.setServiceStatus(message)
+            } else {
+                chatVM.setServiceStatus("Failed to start on-device AI")
+            }
+            return
+        }
+
+        let service = ApfelChatService(port: port)
+        let health = try? await service.healthCheck()
+        chatVM.configureService(service, contextWindow: health?.contextWindow)
+
+        let stt: any SpeechInput
+        if let ohrPath = ServerManager.findOhrBinary() {
+            stt = OhrSpeechInput(ohrPath: ohrPath, languageCode: settingsVM.ttsLanguage)
+            printToStderr("apfel-chat: using ohr for speech input")
+        } else {
+            stt = OnDeviceSpeechInput()
+            printToStderr("apfel-chat: using on-device speech input")
+        }
+
+        chatVM.configureSpeech(
+            speechInput: stt,
+            speechOutput: OnDeviceSpeechOutput()
+        )
+        chatVM.configureVision(AugeService())
     }
 }

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ChatView: View {
     @Bindable var viewModel: ChatViewModel
+    @State private var isFollowingTail = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -10,6 +11,10 @@ struct ChatView: View {
                 emptyState
             } else {
                 messageList
+            }
+
+            if let status = viewModel.serviceStatusMessage {
+                statusBanner(status)
             }
 
             if let error = viewModel.errorMessage {
@@ -44,6 +49,20 @@ struct ChatView: View {
                     .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
+            }
+        }
+        .overlay {
+            if viewModel.isLoadingConversation {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading conversation...")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
@@ -88,9 +107,7 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    // ForEach directly over messages — no Array allocation, stable IDs.
                     ForEach(viewModel.messages) { msg in
-                        // Context window divider appears above the first in-context message.
                         if msg.id == viewModel.contextCutoffMessageId {
                             HStack(spacing: 8) {
                                 Rectangle().frame(height: 1.5).foregroundStyle(.orange.opacity(0.4))
@@ -113,18 +130,27 @@ struct ChatView: View {
                         .id(msg.id)
                     }
 
-                    Color.clear.frame(height: 1).id("bottom")
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom")
+                        .onAppear { isFollowingTail = true }
+                        .onDisappear { isFollowingTail = false }
                 }
                 .padding(.vertical, 20)
             }
-            // Animated scroll when a new message is added.
             .onChange(of: viewModel.messages.count) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                guard !viewModel.isLoadingConversation else { return }
+                guard isFollowingTail || viewModel.messages.count <= 2 else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
-            // Cheap Int comparison (not String) to follow streaming content.
             .onChange(of: viewModel.streamTick) {
+                guard isFollowingTail else { return }
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel.isLoadingConversation) { _, isLoading in
+                guard !isLoading else { return }
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
@@ -147,5 +173,19 @@ struct ChatView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.orange.opacity(0.06))
+    }
+
+    private func statusBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .scaleEffect(0.6)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.blue.opacity(0.05))
     }
 }

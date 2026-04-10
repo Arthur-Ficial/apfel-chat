@@ -79,6 +79,25 @@ struct SQLitePersistenceTests {
         #expect(results.count == 2)
     }
 
+    @Test("Conversation search uses titles and indexed message content")
+    func searchConversations() async throws {
+        let db = try makeInMemory()
+        let conv1 = try await db.createConversation(title: "Swift chat")
+        let conv2 = try await db.createConversation(title: "Other")
+        try await db.addMessage(
+            Message(conversationId: conv2.id, role: .user, content: "Tell me about performance tuning"),
+            to: conv2.id
+        )
+
+        let titleMatches = try await db.searchConversations(query: "Swift")
+        #expect(titleMatches.count == 1)
+        #expect(titleMatches[0].id == conv1.id)
+
+        let contentMatches = try await db.searchConversations(query: "performance")
+        #expect(contentMatches.count == 1)
+        #expect(contentMatches[0].id == conv2.id)
+    }
+
     @Test("Update message content")
     func updateMessage() async throws {
         let db = try makeInMemory()

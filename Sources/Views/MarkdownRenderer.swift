@@ -7,8 +7,8 @@ enum MarkdownRenderer {
         let type: BlockType
         let content: String
         let language: String?
-        let rendered: AttributedString?  // pre-computed for .text; nil for .code
-        let id: String                   // stable within cache lifetime (UUID per parse)
+        let rendered: AttributedString?
+        let id: String
     }
 
     struct CachedRender {
@@ -17,17 +17,21 @@ enum MarkdownRenderer {
         let blocks: [ContentBlock]
     }
 
-    // Main-thread-only cache — SwiftUI body always runs on the main thread.
-    // Keys are content strings; evict all entries when limit is exceeded.
     @MainActor private static var cache: [String: CachedRender] = [:]
-    private static let cacheLimit = 200
+    @MainActor private static var cacheOrder: [String] = []
+    private static let cacheLimit = 300
 
     @MainActor
     static func cachedRender(for content: String) -> CachedRender {
-        if let hit = cache[content] { return hit }
-        if cache.count >= cacheLimit { cache.removeAll() }
+        if let hit = cache[content] {
+            touch(content)
+            return hit
+        }
+
         let result = compute(for: content)
         cache[content] = result
+        touch(content)
+        trimCacheIfNeeded()
         return result
     }
 
@@ -38,16 +42,15 @@ enum MarkdownRenderer {
         return CachedRender(isJSON: false, prettyJSON: "", blocks: parseBlocks(content))
     }
 
-    // MARK: - Block parsing
-
     static func parseBlocks(_ markdown: String) -> [ContentBlock] {
         var blocks: [ContentBlock] = []
         var currentText = ""
         var inCodeBlock = false
         var codeContent = ""
         var codeLanguage: String?
+        var blockIndex = 0
 
-        for line in markdown.components(separatedBy: "\n") {
+        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
             if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                 let trimmedLine = line.trimmingCharacters(in: .whitespaces)
                 if inCodeBlock {
@@ -56,8 +59,9 @@ enum MarkdownRenderer {
                         content: codeContent.trimmingCharacters(in: .newlines),
                         language: codeLanguage,
                         rendered: nil,
-                        id: UUID().uuidString
+                        id: blockID(type: .code, index: blockIndex, content: codeContent, language: codeLanguage)
                     ))
+                    blockIndex += 1
                     codeContent = ""
                     codeLanguage = nil
                     inCodeBlock = false
@@ -69,8 +73,9 @@ enum MarkdownRenderer {
                             content: trimmed,
                             language: nil,
                             rendered: render(trimmed),
-                            id: UUID().uuidString
+                            id: blockID(type: .text, index: blockIndex, content: trimmed, language: nil)
                         ))
+                        blockIndex += 1
                     }
                     currentText = ""
                     let lang = String(trimmedLine.dropFirst(3)).trimmingCharacters(in: .whitespaces)
@@ -92,9 +97,11 @@ enum MarkdownRenderer {
                 content: codeContent,
                 language: codeLanguage,
                 rendered: nil,
-                id: UUID().uuidString
+                id: blockID(type: .code, index: blockIndex, content: codeContent, language: codeLanguage)
             ))
+            blockIndex += 1
         }
+
         let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             blocks.append(ContentBlock(
@@ -102,7 +109,7 @@ enum MarkdownRenderer {
                 content: trimmed,
                 language: nil,
                 rendered: render(trimmed),
-                id: UUID().uuidString
+                id: blockID(type: .text, index: blockIndex, content: trimmed, language: nil)
             ))
         }
 
@@ -129,5 +136,28 @@ enum MarkdownRenderer {
               let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
               let str = String(data: pretty, encoding: .utf8) else { return text }
         return str
+    }
+
+    @MainActor
+    private static func touch(_ key: String) {
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+    }
+
+    @MainActor
+    private static func trimCacheIfNeeded() {
+        while cacheOrder.count > cacheLimit {
+            let evicted = cacheOrder.removeFirst()
+            cache.removeValue(forKey: evicted)
+        }
+    }
+
+    private static func blockID(
+        type: ContentBlock.BlockType,
+        index: Int,
+        content: String,
+        language: String?
+    ) -> String {
+        "\(type.rawValue)-\(index)-\(language ?? "plain")-\(content.hashValue)"
     }
 }

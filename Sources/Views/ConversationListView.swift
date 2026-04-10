@@ -13,18 +13,22 @@ struct ConversationListView: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(8)
                 .onChange(of: viewModel.searchQuery) {
-                    Task { await viewModel.search(query: viewModel.searchQuery) }
+                    viewModel.scheduleSearch()
                 }
 
             List(selection: $viewModel.selectedId) {
-                if viewModel.conversations.isEmpty && !viewModel.searchQuery.isEmpty {
+                if viewModel.isSearching && viewModel.displayedConversations.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 20)
+                } else if viewModel.displayedConversations.isEmpty && !viewModel.searchQuery.isEmpty {
                     Text("No results for \"\(viewModel.searchQuery)\"")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 20)
                 }
-                ForEach(viewModel.conversations) { conv in
+                ForEach(viewModel.displayedConversations) { conv in
                     if editingId == conv.id {
                         TextField("Title", text: $editTitle)
                             .textFieldStyle(.plain)
@@ -59,7 +63,7 @@ struct ConversationListView: View {
                 }
                 .onDelete { indexSet in
                     for index in indexSet {
-                        let conv = viewModel.conversations[index]
+                        let conv = viewModel.displayedConversations[index]
                         Task { await viewModel.deleteConversation(id: conv.id) }
                     }
                 }

@@ -38,6 +38,18 @@ actor MockPersistence: ChatPersistence {
         }
     }
 
+    func searchConversations(query: String) async throws -> [Conversation] {
+        let lowered = query.lowercased()
+        let matchingIDs = Set(messageStore.values.flatMap { $0 }.compactMap { message in
+            message.content.lowercased().contains(lowered) ? message.conversationId : nil
+        })
+
+        return conversations.filter {
+            $0.title.lowercased().contains(lowered) || matchingIDs.contains($0.id)
+        }
+        .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     func search(query: String) async throws -> [Message] {
         let lowered = query.lowercased()
         return messageStore.values.flatMap { $0 }.filter {

@@ -12,16 +12,21 @@ final class ServerManager {
 
     private(set) var state: State = .idle
     private var serverProcess: Process?
+    nonisolated private static let healthSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 0.25
+        configuration.timeoutIntervalForResource = 0.5
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
 
     /// Finds an executable by name, checking PATH, bundle, and common install locations
     nonisolated static func findBinary(named name: String) -> String? {
-        // Check PATH
         if let resolved = ProcessInfo.processInfo.environment["PATH"]?
             .split(separator: ":").map({ "\($0)/\(name)" })
             .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return resolved
         }
-        // Check inside .app bundle (Contents/MacOS/ and Contents/Helpers/)
         if let execPath = Bundle.main.executablePath {
             let bundleDir = URL(fileURLWithPath: execPath).deletingLastPathComponent()
             let inMacOS = bundleDir.appendingPathComponent(name).path
@@ -30,7 +35,6 @@ final class ServerManager {
                 .appendingPathComponent("Helpers/\(name)").path
             if FileManager.default.isExecutableFile(atPath: inHelpers) { return inHelpers }
         }
-        // Common install locations
         let fallbacks = [
             "/opt/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
@@ -76,8 +80,6 @@ final class ServerManager {
     }
 
     nonisolated static func buildArguments(port: Int) -> [String] {
-        // --permissive: reduces Apple Intelligence safety filter false refusals.
-        // Default on; user can disable in Advanced Settings (takes effect on next launch).
         let isPermissive = UserDefaults.standard.object(forKey: "ac_permissive") == nil
             || UserDefaults.standard.bool(forKey: "ac_permissive")
         var args = ["--serve", "--port", "\(port)", "--cors"]
@@ -87,16 +89,29 @@ final class ServerManager {
 
     func tryExistingServer() async -> Int? {
         let ports = [11434, 11435] + Array(11440...11449)
-        for port in ports {
-            let url = URL(string: "http://127.0.0.1:\(port)/health")!
-            do {
-                let (_, response) = try await URLSession.shared.data(from: url)
-                if (response as? HTTPURLResponse)?.statusCode == 200 {
-                    state = .running(port: port, process: nil)
-                    return port
+        var foundPort: Int?
+
+        await withTaskGroup(of: Int?.self) { group in
+            for port in ports {
+                group.addTask {
+                    await Self.isHealthyServer(port: port) ? port : nil
                 }
-            } catch { continue }
+            }
+
+            for await candidate in group {
+                if let port = candidate {
+                    foundPort = port
+                    group.cancelAll()
+                    break
+                }
+            }
         }
+
+        if let foundPort {
+            state = .running(port: foundPort, process: nil)
+            return foundPort
+        }
+
         return nil
     }
 
@@ -149,15 +164,21 @@ final class ServerManager {
 
     private func waitForReady(port: Int, timeout: Double) async -> Bool {
         let start = Date()
-        let url = URL(string: "http://127.0.0.1:\(port)/health")!
         while Date().timeIntervalSince(start) < timeout {
-            do {
-                let (_, response) = try await URLSession.shared.data(from: url)
-                if (response as? HTTPURLResponse)?.statusCode == 200 { return true }
-            } catch {}
+            if await Self.isHealthyServer(port: port) { return true }
             try? await Task.sleep(for: .milliseconds(200))
         }
         return false
+    }
+
+    nonisolated private static func isHealthyServer(port: Int) async -> Bool {
+        let url = URL(string: "http://127.0.0.1:\(port)/health")!
+        do {
+            let (_, response) = try await healthSession.data(from: url)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
     }
 }
 

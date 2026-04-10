@@ -22,8 +22,10 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
         sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
         sqlite3_exec(db, "PRAGMA synchronous=NORMAL", nil, nil, nil)
         sqlite3_exec(db, "PRAGMA cache_size=-8000", nil, nil, nil)   // 8 MB page cache
+        sqlite3_exec(db, "PRAGMA temp_store=MEMORY", nil, nil, nil)
         sqlite3_exec(db, "PRAGMA foreign_keys=ON", nil, nil, nil)
         try createTables()
+        try rebuildSearchIndex()
     }
 
     /// Run a throwing block on the dedicated SQLite queue, bridging to async/await.
@@ -72,9 +74,26 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conversation
             ON messages(conversation_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_conversations_updated_at
+            ON conversations(updated_at DESC);
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+            message_id UNINDEXED,
+            conversation_id UNINDEXED,
+            content,
+            tokenize = 'unicode61'
+        );
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
             throw PersistenceError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    private func rebuildSearchIndex() throws {
+        try withTransaction {
+            try self.execute("DELETE FROM messages_fts")
+            try self.execute(
+                "INSERT INTO messages_fts (message_id, conversation_id, content) SELECT id, conversation_id, content FROM messages"
+            )
         }
     }
 
@@ -126,8 +145,11 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
 
     func deleteConversation(id: String) async throws {
         try await onQueue {
-            try self.execute("DELETE FROM messages WHERE conversation_id = ?", bindings: [.text(id)])
-            try self.execute("DELETE FROM conversations WHERE id = ?", bindings: [.text(id)])
+            try self.withTransaction {
+                try self.execute("DELETE FROM messages_fts WHERE conversation_id = ?", bindings: [.text(id)])
+                try self.execute("DELETE FROM messages WHERE conversation_id = ?", bindings: [.text(id)])
+                try self.execute("DELETE FROM conversations WHERE id = ?", bindings: [.text(id)])
+            }
         }
     }
 
@@ -151,19 +173,25 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
 
     func addMessage(_ msg: Message, to conversationId: String) async throws {
         try await onQueue {
-            try self.execute(
-                "INSERT INTO messages (id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                bindings: [
-                    .text(msg.id), .text(conversationId), .text(msg.role.rawValue),
-                    .text(msg.content), .real(msg.timestamp.timeIntervalSince1970),
-                    .intOrNull(msg.tokenCount), .intOrNull(msg.durationMs),
-                    .int(msg.isStreaming ? 1 : 0),
-                ]
-            )
-            try self.execute(
-                "UPDATE conversations SET updated_at = ? WHERE id = ?",
-                bindings: [.real(Date().timeIntervalSince1970), .text(conversationId)]
-            )
+            try self.withTransaction {
+                try self.execute(
+                    "INSERT INTO messages (id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    bindings: [
+                        .text(msg.id), .text(conversationId), .text(msg.role.rawValue),
+                        .text(msg.content), .real(msg.timestamp.timeIntervalSince1970),
+                        .intOrNull(msg.tokenCount), .intOrNull(msg.durationMs),
+                        .int(msg.isStreaming ? 1 : 0),
+                    ]
+                )
+                try self.execute(
+                    "INSERT INTO messages_fts (message_id, conversation_id, content) VALUES (?, ?, ?)",
+                    bindings: [.text(msg.id), .text(conversationId), .text(msg.content)]
+                )
+                try self.execute(
+                    "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                    bindings: [.real(Date().timeIntervalSince1970), .text(conversationId)]
+                )
+            }
         }
     }
 
@@ -189,13 +217,61 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
 
     func updateMessage(_ msg: Message) async throws {
         try await onQueue {
-            try self.execute(
-                "UPDATE messages SET content = ?, token_count = ?, duration_ms = ?, is_streaming = ? WHERE id = ?",
-                bindings: [
-                    .text(msg.content), .intOrNull(msg.tokenCount),
-                    .intOrNull(msg.durationMs), .int(msg.isStreaming ? 1 : 0),
-                    .text(msg.id),
-                ]
+            try self.withTransaction {
+                try self.execute(
+                    "UPDATE messages SET content = ?, token_count = ?, duration_ms = ?, is_streaming = ? WHERE id = ?",
+                    bindings: [
+                        .text(msg.content), .intOrNull(msg.tokenCount),
+                        .intOrNull(msg.durationMs), .int(msg.isStreaming ? 1 : 0),
+                        .text(msg.id),
+                    ]
+                )
+                try self.execute(
+                    "UPDATE messages_fts SET content = ? WHERE message_id = ?",
+                    bindings: [.text(msg.content), .text(msg.id)]
+                )
+            }
+        }
+    }
+
+    func searchConversations(query searchTerm: String) async throws -> [Conversation] {
+        try await onQueue {
+            let titlePattern = "%\(searchTerm)%"
+            if let ftsQuery = self.ftsMatchQuery(from: searchTerm) {
+                return try self.query(
+                    """
+                    SELECT * FROM (
+                        SELECT id, title, system_prompt, created_at, updated_at, model_settings
+                        FROM conversations
+                        WHERE lower(title) LIKE lower(?)
+                        UNION
+                        SELECT c.id, c.title, c.system_prompt, c.created_at, c.updated_at, c.model_settings
+                        FROM conversations c
+                        JOIN (
+                            SELECT DISTINCT conversation_id
+                            FROM messages_fts
+                            WHERE messages_fts MATCH ?
+                            LIMIT 100
+                        ) fts ON fts.conversation_id = c.id
+                    )
+                    ORDER BY updated_at DESC
+                    LIMIT 100
+                    """,
+                    bindings: [.text(titlePattern), .text(ftsQuery)],
+                    map: self.mapConversation
+                )
+            }
+
+            return try self.query(
+                """
+                SELECT id, title, system_prompt, created_at, updated_at, model_settings
+                FROM conversations
+                WHERE lower(title) LIKE lower(?)
+                ORDER BY updated_at DESC
+                LIMIT 100
+                """,
+                bindings: [.text(titlePattern)],
+                map: self.mapConversation
             )
         }
     }
@@ -228,6 +304,22 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
         case int(Int)
         case intOrNull(Int?)
         case real(Double)
+    }
+
+    private func withTransaction(_ work: () throws -> Void) throws {
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            throw PersistenceError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+
+        do {
+            try work()
+            guard sqlite3_exec(db, "COMMIT", nil, nil, nil) == SQLITE_OK else {
+                throw PersistenceError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        } catch {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            throw error
+        }
     }
 
     private func execute(_ sql: String, bindings: [Binding] = []) throws {
@@ -290,6 +382,33 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
     private func columnIntOrNil(_ stmt: OpaquePointer, _ col: Int32) -> Int? {
         guard sqlite3_column_type(stmt, col) != SQLITE_NULL else { return nil }
         return Int(sqlite3_column_int(stmt, col))
+    }
+
+    private func mapConversation(_ stmt: OpaquePointer) -> Conversation {
+        let settingsJSON = columnTextOrNil(stmt, 5)
+        let settings: ModelSettings? = settingsJSON.flatMap {
+            try? JSONDecoder().decode(ModelSettings.self, from: $0.data(using: .utf8)!)
+        }
+        return Conversation(
+            id: String(cString: sqlite3_column_text(stmt, 0)),
+            title: String(cString: sqlite3_column_text(stmt, 1)),
+            systemPrompt: columnTextOrNil(stmt, 2),
+            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
+            updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
+            modelSettings: settings
+        )
+    }
+
+    private func ftsMatchQuery(from query: String) -> String? {
+        let tokens = query
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .prefix(6)
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        guard !tokens.isEmpty else { return nil }
+        return tokens.map { "\($0)*" }.joined(separator: " AND ")
     }
 }
 

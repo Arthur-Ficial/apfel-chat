@@ -65,7 +65,7 @@ apfel-chat is a native macOS AI chat app powered entirely by Apple Intelligence 
 | **Token counter** | Live context usage + configurable context window cap |
 | **Auto-title** | Conversation title generated from first exchange |
 | **Model settings** | Temperature, max tokens, context window, system prompt |
-| **73 tests** | ViewModel, persistence, SSE parser, service layer, image analysis |
+| **74 tests** | ViewModel, persistence, SSE parser, service layer, image analysis |
 
 ---
 
@@ -203,7 +203,7 @@ MVVM, `@Observable` ViewModels, Swift actors for async safety. SQLite3 linked di
 
 ```bash
 swift build          # debug build
-swift test           # run 73 tests
+swift test           # run 74 tests
 make app             # build app bundle → build/apfel-chat.app
 make install         # build + copy to /Applications
 make dist            # build release zip + CLI tarball + checksums
@@ -223,7 +223,7 @@ One command does everything:
 ```
 
 1. Checks you're on `main` with a clean tree and a valid Developer ID cert
-2. Runs `swift test` — 73 tests must pass
+2. Runs `swift test` — 74 tests must pass
 3. Builds release binary, assembles `.app`, embeds apfel helper
 4. Signs with `Developer ID Application: Franz Enzenhofer (7D2YX5DQ6M)` + entitlements
 5. Notarises with Apple and staples the ticket
