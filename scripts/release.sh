@@ -129,16 +129,16 @@ gh release create "$TAG" \
 print ""
 print "==> Pushing cask to Arthur-Ficial/homebrew-tap..."
 CASK_B64="$(base64 < "$HOMEBREW_CASK")"
-EXISTING_SHA="$(gh api repos/Arthur-Ficial/homebrew-tap/contents/Formula/apfel-chat.rb --jq '.sha' 2>/dev/null || true)"
+EXISTING_SHA="$(gh api repos/Arthur-Ficial/homebrew-tap/contents/Casks/apfel-chat.rb --jq '.sha' 2>/dev/null || true)"
 if [[ -n "$EXISTING_SHA" ]]; then
-    gh api repos/Arthur-Ficial/homebrew-tap/contents/Formula/apfel-chat.rb \
+    gh api repos/Arthur-Ficial/homebrew-tap/contents/Casks/apfel-chat.rb \
         -X PUT \
         -f message="cask: update apfel-chat to ${TAG}" \
         -f content="$CASK_B64" \
         -f sha="$EXISTING_SHA" \
         --jq '.commit.sha' > /dev/null
 else
-    gh api repos/Arthur-Ficial/homebrew-tap/contents/Formula/apfel-chat.rb \
+    gh api repos/Arthur-Ficial/homebrew-tap/contents/Casks/apfel-chat.rb \
         -X PUT \
         -f message="cask: add apfel-chat ${TAG}" \
         -f content="$CASK_B64" \
@@ -274,7 +274,7 @@ REDIRECT_LOCATION="$(curl -sI "https://github.com/Arthur-Ficial/apfel-chat/relea
     && pass "Stable URL redirects to $TAG" || fail "Stable URL redirects to wrong version: $REDIRECT_LOCATION"
 
 # 7. Homebrew tap has correct version
-TAP_VERSION="$(gh api repos/Arthur-Ficial/homebrew-tap/contents/Formula/apfel-chat.rb --jq '.content' 2>/dev/null | base64 -d | grep '^  version ' | tr -d ' "' | sed 's/version//')"
+TAP_VERSION="$(gh api repos/Arthur-Ficial/homebrew-tap/contents/Casks/apfel-chat.rb --jq '.content' 2>/dev/null | base64 -d | grep '^  version ' | tr -d ' "' | sed 's/version//')"
 [[ "$TAP_VERSION" == "$VERSION" ]] \
     && pass "homebrew-tap cask version = $VERSION" || fail "homebrew-tap cask version = '$TAP_VERSION', expected '$VERSION'"
 
