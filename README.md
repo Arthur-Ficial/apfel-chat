@@ -96,13 +96,13 @@ brew upgrade apfel-chat
 
 ### Option 2 — Direct download (zip)
 
-1. Download **[apfel-chat-macos-arm64.zip](https://github.com/Arthur-Ficial/apfel-chat/releases/latest/download/apfel-chat-macos-arm64.zip)** from the [latest release](https://github.com/Arthur-Ficial/apfel-chat/releases/latest)
+1. Download **[apfel-chat-v1.1.1-macos-arm64.zip](https://github.com/Arthur-Ficial/apfel-chat/releases/download/v1.1.1/apfel-chat-v1.1.1-macos-arm64.zip)** from the [latest release](https://github.com/Arthur-Ficial/apfel-chat/releases/latest)
 2. Unzip it
 3. Drag `apfel-chat.app` to `/Applications`
 
 ```bash
 # Verify SHA-256 (checksums in SHA256SUMS in each release)
-shasum -a 256 apfel-chat-macos-arm64.zip
+shasum -a 256 apfel-chat-v1.1.1-macos-arm64.zip
 ```
 
 ### Option 3 — One-liner installer
@@ -210,7 +210,7 @@ make dist            # build release zip + CLI tarball + checksums
 make release         # full release: test → build → sign → notarise → tag → push → GitHub release → site deploy
 ```
 
-Tests cover the SSE parser, chat service, image analysis, persistence, ViewModels, and server manager. All 73 pass on every release.
+Tests cover the SSE parser, chat service, image analysis, persistence, ViewModels, and server manager. All 74 pass on every release.
 
 ---
 

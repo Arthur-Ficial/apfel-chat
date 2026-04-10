@@ -60,13 +60,32 @@ fi
 rm -rf "$VERIFY_DIR"
 print "==> Notarisation ticket verified."
 
-# ── Update softwareVersion in landing page JSON-LD ──────────────────────────
+# ── Update landing page: softwareVersion, downloadUrl, and download button ───
 print ""
-print "==> Updating site/index.html softwareVersion to $VERSION..."
-sed -i '' "s/\"softwareVersion\": \"[^\"]*\"/\"softwareVersion\": \"$VERSION\"/" "$ROOT_DIR/site/index.html"
+print "==> Updating site/index.html for $VERSION..."
+VERSIONED_ZIP_URL="https://github.com/Arthur-Ficial/apfel-chat/releases/download/${TAG}/${APP_NAME}-${TAG}-macos-${ARCH}.zip"
+
+sed -i '' "s|\"softwareVersion\": \"[^\"]*\"|\"softwareVersion\": \"$VERSION\"|" "$ROOT_DIR/site/index.html"
+sed -i '' "s|\"downloadUrl\": \"[^\"]*\"|\"downloadUrl\": \"$VERSIONED_ZIP_URL\"|" "$ROOT_DIR/site/index.html"
+# Update the button fallback href (JS overrides at runtime; this keeps no-JS correct too)
+sed -i '' "s|id=\"download-btn\" href=\"[^\"]*\"|id=\"download-btn\" href=\"$VERSIONED_ZIP_URL\"|" "$ROOT_DIR/site/index.html"
+
 if ! git -C "$ROOT_DIR" diff --quiet site/index.html; then
     git -C "$ROOT_DIR" add site/index.html
     git -C "$ROOT_DIR" commit -m "chore: update softwareVersion to $VERSION in site/index.html"
+fi
+
+# ── Update README download URL to versioned ZIP ──────────────────────────────
+print ""
+print "==> Updating README.md download URL to $TAG..."
+sed -i '' "s|releases/download/v[^/]*/apfel-chat-v[^/]*-macos-arm64\.zip|releases/download/${TAG}/${APP_NAME}-${TAG}-macos-${ARCH}.zip|g" "$ROOT_DIR/README.md"
+sed -i '' "s|releases/latest/download/apfel-chat-macos-arm64\.zip|releases/download/${TAG}/${APP_NAME}-${TAG}-macos-${ARCH}.zip|g" "$ROOT_DIR/README.md"
+sed -i '' "s|\[apfel-chat-[^]]*\.zip\]|\[${APP_NAME}-${TAG}-macos-${ARCH}.zip\]|g" "$ROOT_DIR/README.md"
+sed -i '' "s|shasum -a 256 apfel-chat-[^ ]*\.zip|shasum -a 256 ${APP_NAME}-${TAG}-macos-${ARCH}.zip|g" "$ROOT_DIR/README.md"
+
+if ! git -C "$ROOT_DIR" diff --quiet README.md; then
+    git -C "$ROOT_DIR" add README.md
+    git -C "$ROOT_DIR" commit -m "chore: update README download URL to $TAG"
 fi
 
 # ── Update docs screenshots (README assets) ─────────────────────────────────
@@ -111,6 +130,41 @@ print ""
 print "==> Deploying website to Cloudflare Pages..."
 source ~/.env 2>/dev/null || true
 npx wrangler pages deploy "$ROOT_DIR/site" --project-name apfel-chat
+
+# ── Ensure custom domain is wired up (idempotent) ───────────────────────────
+print ""
+print "==> Ensuring apfel-chat.franzai.com is configured..."
+EXISTING_DOMAINS="$(curl -s \
+    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/apfel-chat/domains" \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    | python3 -c "import json,sys; [print(d['name']) for d in json.load(sys.stdin).get('result',[])]" 2>/dev/null)"
+
+if ! echo "$EXISTING_DOMAINS" | grep -q "apfel-chat.franzai.com"; then
+    print "    Adding custom domain to Cloudflare Pages..."
+    curl -s -X POST \
+        "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/apfel-chat/domains" \
+        -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"apfel-chat.franzai.com"}' > /dev/null
+else
+    print "    Custom domain already registered."
+fi
+
+EXISTING_DNS="$(curl -s \
+    "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=apfel-chat.franzai.com" \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    | python3 -c "import json,sys; r=json.load(sys.stdin).get('result',[]); print(r[0]['type'] if r else '')" 2>/dev/null)"
+
+if [[ -z "$EXISTING_DNS" ]]; then
+    print "    Creating CNAME apfel-chat.franzai.com → apfel-chat.pages.dev..."
+    curl -s -X POST \
+        "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records" \
+        -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"type":"CNAME","name":"apfel-chat","content":"apfel-chat.pages.dev","ttl":1,"proxied":true}' > /dev/null
+else
+    print "    DNS CNAME already exists."
+fi
 
 # ── Post-deploy tests ───────────────────────────────────────────────────────
 print ""
@@ -179,10 +233,14 @@ else
 fi
 rm -rf "$DOWNLOAD_DIR"
 
-# 4. Landing page is live and returns HTTP 200
+# 4. Landing page is live on both Pages URL and custom domain
 SITE_STATUS="$(curl -so /dev/null -w "%{http_code}" https://apfel-chat.pages.dev)"
 [[ "$SITE_STATUS" == "200" ]] \
-    && pass "Landing page HTTP $SITE_STATUS" || fail "Landing page HTTP $SITE_STATUS"
+    && pass "Pages URL (apfel-chat.pages.dev) HTTP $SITE_STATUS" || fail "Pages URL HTTP $SITE_STATUS"
+
+CUSTOM_STATUS="$(curl -so /dev/null -w "%{http_code}" https://apfel-chat.franzai.com)"
+[[ "$CUSTOM_STATUS" == "200" ]] \
+    && pass "Custom domain (apfel-chat.franzai.com) HTTP $CUSTOM_STATUS" || fail "Custom domain HTTP $CUSTOM_STATUS (DNS or Pages custom domain not configured)"
 
 # 5. GitHub API returns this tag (download button will show correct version)
 API_TAG="$(curl -s https://api.github.com/repos/Arthur-Ficial/apfel-chat/releases/latest | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)"
