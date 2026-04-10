@@ -541,6 +541,98 @@
     footer p { font-size: 11px; color: var(--muted); }
     footer a { color: var(--brand); text-decoration: none; }
 
+    /* ── OFFLINE PILL ── */
+    .offline-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #eff6ff;
+      border: 1.5px solid #bfdbfe;
+      color: #1d4ed8;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 999px;
+      margin-bottom: 22px;
+      letter-spacing: 0;
+    }
+
+    /* ── COMPARISON ── */
+    .cmp-section { background: #f8fbff; padding: 64px 0; }
+    .cmp-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 20px;
+      border-radius: var(--r);
+      border: 1px solid var(--bdl);
+    }
+    .cmp {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 480px;
+    }
+    .cmp thead tr { border-bottom: 2px solid var(--bdl); }
+    .cmp th {
+      padding: 14px 18px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      text-align: center;
+      background: #f4f8fd;
+    }
+    .cmp th.cmp-feat { text-align: left; width: 45%; }
+    .cmp th.cmp-us {
+      background: #dbeafe;
+      color: var(--brand);
+      border-left: 2px solid var(--brand);
+      border-right: 2px solid var(--brand);
+      border-top: 2px solid var(--brand);
+    }
+    .cmp td {
+      padding: 13px 18px;
+      border-bottom: 1px solid #eef2f8;
+      color: var(--text2);
+      text-align: center;
+      vertical-align: middle;
+      background: #fff;
+    }
+    .cmp td:first-child {
+      text-align: left;
+      color: var(--text);
+      font-size: 13px;
+      background: #fff;
+    }
+    .cmp tr.cmp-hero td { background: #fafcff; }
+    .cmp tr.cmp-hero td:first-child { font-weight: 700; }
+    .cmp td.cmp-us { background: #eff6ff; border-left: 2px solid var(--brand); border-right: 2px solid var(--brand); }
+    .cmp tbody tr:last-child td.cmp-us { border-bottom: 2px solid var(--brand); }
+    .ck {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px;
+      background: #16a34a; color: #fff;
+      border-radius: 50%; font-size: 15px; font-weight: 700;
+    }
+    .cx {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px;
+      background: #f0f0f0; color: #aaa;
+      border-radius: 50%; font-size: 15px; font-weight: 700;
+    }
+    .cmp-free { font-weight: 700; color: #16a34a; font-size: 15px; }
+    .cmp-cost { font-size: 12px; color: #999; }
+    .cmp-note {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 640px;
+      border-top: 1px solid var(--bdl);
+      padding-top: 16px;
+      margin-top: 4px;
+    }
+
     /* ── DESKTOP ── */
     @media (min-width: 760px) {
       nav { padding: 14px 48px; }
@@ -603,6 +695,7 @@
       <div class="hero-text">
         <div class="hero-eyebrow">macOS AI chat app</div>
         <h1>Private AI chat.<br><em>Fast. Local.</em></h1>
+        <div class="offline-pill">✈ Works offline — even in airplane mode</div>
         <p class="hero-sub">A full AI chat app that runs entirely on your Mac. Multi-conversation history, voice input, image analysis, markdown rendering. Apple's on-device model. No API keys. No data ever leaves your machine.</p>
         <div class="hero-ctas">
           <a class="btn-blue" href="#install"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Download free</a>
@@ -627,6 +720,66 @@
 <div class="banner">
   <p>Everything runs on your device. No network calls. No data leaves your Mac.</p>
 </div>
+
+<!-- Comparison -->
+<section class="cmp-section" id="why">
+  <div class="wrap">
+    <div class="lbl">vs. cloud AI</div>
+    <h2 class="sh">Works when they don't.</h2>
+    <p class="sub">ChatGPT and Claude need servers, accounts, and an internet connection. apfel-chat runs entirely on your Mac — no Wi-Fi, no sign-up, no monthly bill.</p>
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th class="cmp-feat"></th>
+            <th class="cmp-us">apfel-chat</th>
+            <th>ChatGPT</th>
+            <th>Claude</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="cmp-hero">
+            <td>Works offline</td>
+            <td class="cmp-us"><span class="ck">✓</span></td>
+            <td><span class="cx">✗</span></td>
+            <td><span class="cx">✗</span></td>
+          </tr>
+          <tr>
+            <td>Cost</td>
+            <td class="cmp-us"><span class="cmp-free">Free</span></td>
+            <td><span class="cmp-cost">Free / $20+/mo</span></td>
+            <td><span class="cmp-cost">Free / $20+/mo</span></td>
+          </tr>
+          <tr>
+            <td>Data stays on your Mac</td>
+            <td class="cmp-us"><span class="ck">✓</span></td>
+            <td><span class="cx">✗</span></td>
+            <td><span class="cx">✗</span></td>
+          </tr>
+          <tr>
+            <td>No account or sign-up</td>
+            <td class="cmp-us"><span class="ck">✓</span></td>
+            <td><span class="cx">✗</span></td>
+            <td><span class="cx">✗</span></td>
+          </tr>
+          <tr>
+            <td>Works during service outages</td>
+            <td class="cmp-us"><span class="ck">✓</span></td>
+            <td><span class="cx">✗</span></td>
+            <td><span class="cx">✗</span></td>
+          </tr>
+          <tr>
+            <td>No API key needed</td>
+            <td class="cmp-us"><span class="ck">✓</span></td>
+            <td><span class="cx">✗</span></td>
+            <td><span class="cx">✗</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note">ChatGPT and Claude are powerful cloud services — but they require an internet connection and send your conversations to remote servers. apfel-chat is the alternative for when privacy, offline availability, and zero cost matter.</p>
+  </div>
+</section>
 
 <!-- How it works -->
 <section class="sec-dark" id="how-it-works">
