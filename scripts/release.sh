@@ -90,6 +90,94 @@ print "==> Deploying website to Cloudflare Pages..."
 source ~/.env 2>/dev/null || true
 npx wrangler pages deploy "$ROOT_DIR/site" --project-name apfel-chat
 
+# ── Post-deploy tests ───────────────────────────────────────────────────────
+print ""
+print "==> Running post-deploy tests..."
+
+FAIL=0
+pass() { print "    [PASS] $1"; }
+fail() { print "    [FAIL] $1" >&2; FAIL=1; }
+
+# 1. GitHub release exists and has all expected assets
+RELEASE_JSON="$(gh release view "$TAG" --json assets,draft,tagName 2>/dev/null)"
+[[ "$(print "$RELEASE_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['draft'])")" == "False" ]] \
+    && pass "GitHub release $TAG is published" || fail "GitHub release $TAG is draft or missing"
+
+for ASSET in "${APP_NAME}-${TAG}-macos-${ARCH}.zip" \
+             "${APP_NAME}-macos-${ARCH}.zip" \
+             "${APP_NAME}-${TAG}-cli-macos-${ARCH}.tar.gz" \
+             "SHA256SUMS" "${APP_NAME}.rb"; do
+    print "$RELEASE_JSON" | python3 -c "import json,sys; names=[a['name'] for a in json.load(sys.stdin)['assets']]; exit(0 if '$ASSET' in names else 1)" \
+        && pass "Asset present: $ASSET" || fail "Asset MISSING: $ASSET"
+done
+
+# 2. Versioned ZIP is downloadable and SHA256 matches
+DOWNLOAD_DIR="$(mktemp -d)"
+DOWNLOADED_ZIP="$DOWNLOAD_DIR/${APP_NAME}-${TAG}-macos-${ARCH}.zip"
+print "    Downloading versioned ZIP from GitHub..."
+if curl -fsSL -o "$DOWNLOADED_ZIP" \
+    "https://github.com/Arthur-Ficial/apfel-chat/releases/download/${TAG}/${APP_NAME}-${TAG}-macos-${ARCH}.zip" 2>/dev/null; then
+    EXPECTED_SHA="$(grep "${APP_NAME}-${TAG}-macos-${ARCH}.zip" "$SHA_FILE" | awk '{print $1}')"
+    ACTUAL_SHA="$(shasum -a 256 "$DOWNLOADED_ZIP" | awk '{print $1}')"
+    [[ "$EXPECTED_SHA" == "$ACTUAL_SHA" ]] \
+        && pass "SHA256 matches" || fail "SHA256 MISMATCH (expected=$EXPECTED_SHA actual=$ACTUAL_SHA)"
+
+    # 3. Extract and validate app bundle from downloaded ZIP
+    EXTRACT_DIR="$(mktemp -d)"
+    ditto -x -k "$DOWNLOADED_ZIP" "$EXTRACT_DIR"
+    EXTRACTED_APP="$EXTRACT_DIR/${APP_NAME}.app"
+
+    # Version in plist
+    PLIST_VERSION="$(defaults read "$EXTRACTED_APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
+    [[ "$PLIST_VERSION" == "$VERSION" ]] \
+        && pass "App version is $VERSION" || fail "App version is '$PLIST_VERSION', expected '$VERSION'"
+
+    # Gatekeeper
+    spctl --assess --type execute "$EXTRACTED_APP" 2>/dev/null \
+        && pass "Gatekeeper: accepted" || fail "Gatekeeper: REJECTED"
+
+    # Notarisation ticket
+    xcrun stapler validate "$EXTRACTED_APP" >/dev/null 2>&1 \
+        && pass "Notarisation ticket valid" || fail "Notarisation ticket MISSING"
+
+    # apfel embedded
+    [[ -x "$EXTRACTED_APP/Contents/Helpers/apfel" ]] \
+        && pass "apfel binary embedded in Contents/Helpers/" || fail "apfel binary NOT embedded"
+
+    # Code signature identity
+    SIGNER="$(codesign -dvvv "$EXTRACTED_APP" 2>&1 | grep "^Authority=" | head -1)"
+    [[ "$SIGNER" == *"Franz Enzenhofer"* ]] \
+        && pass "Signed by Franz Enzenhofer (7D2YX5DQ6M)" || fail "Unexpected signer: $SIGNER"
+
+    rm -rf "$EXTRACT_DIR"
+else
+    fail "Could not download versioned ZIP from GitHub"
+fi
+rm -rf "$DOWNLOAD_DIR"
+
+# 4. Landing page is live and returns HTTP 200
+SITE_STATUS="$(curl -so /dev/null -w "%{http_code}" https://apfel-chat.pages.dev)"
+[[ "$SITE_STATUS" == "200" ]] \
+    && pass "Landing page HTTP $SITE_STATUS" || fail "Landing page HTTP $SITE_STATUS"
+
+# 5. GitHub API returns this tag (download button will show correct version)
+API_TAG="$(curl -s https://api.github.com/repos/Arthur-Ficial/apfel-chat/releases/latest | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null)"
+[[ "$API_TAG" == "$TAG" ]] \
+    && pass "GitHub API latest = $TAG (download button correct)" || fail "GitHub API latest = '$API_TAG', expected '$TAG'"
+
+# 6. Stable download URL redirects to this tag's ZIP
+REDIRECT_LOCATION="$(curl -sI "https://github.com/Arthur-Ficial/apfel-chat/releases/latest/download/${APP_NAME}-macos-${ARCH}.zip" | grep -i "^location:" | tr -d '\r')"
+[[ "$REDIRECT_LOCATION" == *"$TAG"* ]] \
+    && pass "Stable URL redirects to $TAG" || fail "Stable URL redirects to wrong version: $REDIRECT_LOCATION"
+
+print ""
+if [[ $FAIL -eq 0 ]]; then
+    print "==> All post-deploy tests passed."
+else
+    print "ERROR: One or more post-deploy tests FAILED." >&2
+    exit 1
+fi
+
 # ── Done ────────────────────────────────────────────────────────────────────
 print ""
 print "==> Done! $TAG is live."
