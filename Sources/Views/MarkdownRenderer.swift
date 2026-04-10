@@ -3,13 +3,42 @@ import SwiftUI
 
 enum MarkdownRenderer {
     struct ContentBlock: Identifiable {
-        let id = UUID()
+        enum BlockType: String { case text, code }
         let type: BlockType
         let content: String
         let language: String?
-
-        enum BlockType { case text, code }
+        let rendered: AttributedString?  // pre-computed for .text; nil for .code
+        let id: String                   // stable within cache lifetime (UUID per parse)
     }
+
+    struct CachedRender {
+        let isJSON: Bool
+        let prettyJSON: String
+        let blocks: [ContentBlock]
+    }
+
+    // Main-thread-only cache — SwiftUI body always runs on the main thread.
+    // Keys are content strings; evict all entries when limit is exceeded.
+    @MainActor private static var cache: [String: CachedRender] = [:]
+    private static let cacheLimit = 200
+
+    @MainActor
+    static func cachedRender(for content: String) -> CachedRender {
+        if let hit = cache[content] { return hit }
+        if cache.count >= cacheLimit { cache.removeAll() }
+        let result = compute(for: content)
+        cache[content] = result
+        return result
+    }
+
+    private static func compute(for content: String) -> CachedRender {
+        if isJSON(content) {
+            return CachedRender(isJSON: true, prettyJSON: prettyJSON(content), blocks: [])
+        }
+        return CachedRender(isJSON: false, prettyJSON: "", blocks: parseBlocks(content))
+    }
+
+    // MARK: - Block parsing
 
     static func parseBlocks(_ markdown: String) -> [ContentBlock] {
         var blocks: [ContentBlock] = []
@@ -22,14 +51,26 @@ enum MarkdownRenderer {
             if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                 let trimmedLine = line.trimmingCharacters(in: .whitespaces)
                 if inCodeBlock {
-                    blocks.append(ContentBlock(type: .code, content: codeContent.trimmingCharacters(in: .newlines), language: codeLanguage))
+                    blocks.append(ContentBlock(
+                        type: .code,
+                        content: codeContent.trimmingCharacters(in: .newlines),
+                        language: codeLanguage,
+                        rendered: nil,
+                        id: UUID().uuidString
+                    ))
                     codeContent = ""
                     codeLanguage = nil
                     inCodeBlock = false
                 } else {
                     let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
-                        blocks.append(ContentBlock(type: .text, content: trimmed, language: nil))
+                        blocks.append(ContentBlock(
+                            type: .text,
+                            content: trimmed,
+                            language: nil,
+                            rendered: render(trimmed),
+                            id: UUID().uuidString
+                        ))
                     }
                     currentText = ""
                     let lang = String(trimmedLine.dropFirst(3)).trimmingCharacters(in: .whitespaces)
@@ -46,18 +87,33 @@ enum MarkdownRenderer {
         }
 
         if inCodeBlock && !codeContent.isEmpty {
-            blocks.append(ContentBlock(type: .code, content: codeContent, language: codeLanguage))
+            blocks.append(ContentBlock(
+                type: .code,
+                content: codeContent,
+                language: codeLanguage,
+                rendered: nil,
+                id: UUID().uuidString
+            ))
         }
         let trimmed = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            blocks.append(ContentBlock(type: .text, content: trimmed, language: nil))
+            blocks.append(ContentBlock(
+                type: .text,
+                content: trimmed,
+                language: nil,
+                rendered: render(trimmed),
+                id: UUID().uuidString
+            ))
         }
 
         return blocks
     }
 
     static func render(_ markdown: String) -> AttributedString {
-        (try? AttributedString(markdown: markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(markdown)
+        (try? AttributedString(
+            markdown: markdown,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(markdown)
     }
 
     static func isJSON(_ text: String) -> Bool {

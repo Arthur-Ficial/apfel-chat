@@ -4,7 +4,7 @@ enum Role: String, Codable, Sendable {
     case user, assistant, system
 }
 
-struct Message: Identifiable, Codable, Sendable {
+struct Message: Identifiable, Codable, Sendable, Equatable {
     let id: String
     let conversationId: String
     let role: Role

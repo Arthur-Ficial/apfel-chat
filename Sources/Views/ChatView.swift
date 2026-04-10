@@ -88,9 +88,10 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, msg in
-                        // Context window divider
-                        if let cutoff = viewModel.contextCutoffIndex, index == cutoff {
+                    // ForEach directly over messages — no Array allocation, stable IDs.
+                    ForEach(viewModel.messages) { msg in
+                        // Context window divider appears above the first in-context message.
+                        if msg.id == viewModel.contextCutoffMessageId {
                             HStack(spacing: 8) {
                                 Rectangle().frame(height: 1.5).foregroundStyle(.orange.opacity(0.4))
                                 Text("Above messages are outside the context window")
@@ -106,11 +107,9 @@ struct ChatView: View {
 
                         MessageBubble(
                             message: msg,
-                            isOutOfContext: {
-                                guard let cutoff = viewModel.contextCutoffIndex else { return false }
-                                return index < cutoff
-                            }()
+                            isOutOfContext: viewModel.outOfContextMessageIds.contains(msg.id)
                         )
+                        .equatable()
                         .id(msg.id)
                     }
 
@@ -118,12 +117,14 @@ struct ChatView: View {
                 }
                 .padding(.vertical, 20)
             }
+            // Animated scroll when a new message is added.
             .onChange(of: viewModel.messages.count) {
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
-            .onChange(of: viewModel.messages.last?.content) {
+            // Cheap Int comparison (not String) to follow streaming content.
+            .onChange(of: viewModel.streamTick) {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }

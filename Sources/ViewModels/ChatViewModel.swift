@@ -18,12 +18,23 @@ final class ChatViewModel {
     var isAnalyzingImage: Bool = false
     var showFilePicker: Bool = false
     private(set) var contextCutoffIndex: Int?
+    /// IDs of messages that fall outside the context window (for O(1) lookup in views).
+    private(set) var outOfContextMessageIds: Set<String> = []
+    /// ID of the first in-context message (used to place the divider in ChatView).
+    var contextCutoffMessageId: String? {
+        guard let cutoff = contextCutoffIndex, cutoff < messages.count else { return nil }
+        return messages[cutoff].id
+    }
     var contextTruncationNotice: String?
     private var shownTruncationForConversations: Set<String> = []
+    /// Incremented each time buffered streaming tokens are flushed to the UI (≈60fps).
+    /// ChatView observes this Int instead of comparing the full content string each frame.
+    private(set) var streamTick: Int = 0
 
     func recomputeContextCutoff() {
         guard let window = contextWindow, !messages.isEmpty else {
             contextCutoffIndex = nil
+            outOfContextMessageIds = []
             return
         }
         var total = 0
@@ -42,10 +53,12 @@ final class ChatViewModel {
                     }
                 }
                 contextCutoffIndex = newCutoff
+                outOfContextMessageIds = Set(messages[0..<newCutoff].map { $0.id })
                 return
             }
         }
         contextCutoffIndex = nil
+        outOfContextMessageIds = []
     }
 
     private let chatService: ChatService
@@ -97,13 +110,27 @@ final class ChatViewModel {
         let stream = chatService.send(messages: apiMessages, settings: settings)
 
         do {
+            // Batch token updates to ~60fps to avoid a SwiftUI re-render per token.
+            var streamBuffer = ""
+            var lastFlush = Date()
             for try await delta in stream {
                 if let deltaText = delta.text {
-                    messages[assistantIdx].content += deltaText
+                    streamBuffer += deltaText
+                    let now = Date()
+                    if now.timeIntervalSince(lastFlush) >= 0.016 {
+                        messages[assistantIdx].content += streamBuffer
+                        streamBuffer = ""
+                        lastFlush = now
+                        streamTick += 1
+                    }
                 }
                 if let usage = delta.usage {
                     messages[assistantIdx].tokenCount = usage.totalTokens
                 }
+            }
+            if !streamBuffer.isEmpty {
+                messages[assistantIdx].content += streamBuffer
+                streamTick += 1
             }
             messages[assistantIdx].isStreaming = false
             messages[assistantIdx].durationMs = Int(Date().timeIntervalSince(start) * 1000)
@@ -235,13 +262,26 @@ final class ChatViewModel {
         let stream = chatService.send(messages: apiMessages, settings: settings)
 
         do {
+            var streamBuffer = ""
+            var lastFlush = Date()
             for try await delta in stream {
                 if let deltaText = delta.text {
-                    messages[assistantIdx].content += deltaText
+                    streamBuffer += deltaText
+                    let now = Date()
+                    if now.timeIntervalSince(lastFlush) >= 0.016 {
+                        messages[assistantIdx].content += streamBuffer
+                        streamBuffer = ""
+                        lastFlush = now
+                        streamTick += 1
+                    }
                 }
                 if let usage = delta.usage {
                     messages[assistantIdx].tokenCount = usage.totalTokens
                 }
+            }
+            if !streamBuffer.isEmpty {
+                messages[assistantIdx].content += streamBuffer
+                streamTick += 1
             }
             messages[assistantIdx].isStreaming = false
             messages[assistantIdx].durationMs = Int(Date().timeIntervalSince(start) * 1000)

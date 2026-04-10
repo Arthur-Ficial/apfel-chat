@@ -69,30 +69,31 @@ struct MessageBubble: View {
         }
     }
 
-    // MARK: - Bubble Shape
-
     private var bubbleShape: some Shape {
         RoundedRectangle(cornerRadius: 18)
     }
 
-    private var displayContent: String {
-        message.content
-    }
-
-    // MARK: - Content
+    // MARK: - Content (cache-backed rendering)
 
     @ViewBuilder
     private var contentView: some View {
-        if MarkdownRenderer.isJSON(message.content) {
+        // cachedRender is O(1) on a cache hit; parse+render only runs once per unique content string.
+        let cached = MarkdownRenderer.cachedRender(for: message.content)
+        if cached.isJSON {
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(MarkdownRenderer.prettyJSON(message.content))
+                Text(cached.prettyJSON)
                     .font(.system(size: 13, design: .monospaced))
                     .textSelection(.enabled)
             }
         } else {
-            let blocks = MarkdownRenderer.parseBlocks(displayContent)
-            if blocks.count == 1 && blocks[0].type == .text {
-                Text(MarkdownRenderer.render(displayContent))
+            let blocks = cached.blocks
+            if blocks.isEmpty {
+                // Empty or mid-stream placeholder
+                Text(message.content)
+                    .font(.system(size: 14))
+                    .textSelection(.enabled)
+            } else if blocks.count == 1 && blocks[0].type == .text {
+                Text(blocks[0].rendered ?? AttributedString(blocks[0].content))
                     .font(.system(size: 14))
                     .lineSpacing(3)
                     .textSelection(.enabled)
@@ -101,7 +102,7 @@ struct MessageBubble: View {
                     ForEach(blocks) { block in
                         switch block.type {
                         case .text:
-                            Text(MarkdownRenderer.render(block.content))
+                            Text(block.rendered ?? AttributedString(block.content))
                                 .font(.system(size: 14))
                                 .lineSpacing(3)
                                 .textSelection(.enabled)
@@ -143,8 +144,12 @@ struct MessageBubble: View {
         case .system: return Color.orange.opacity(0.12)
         }
     }
+}
 
-    private var textColor: Color {
-        message.role == .user ? .white : .primary
+// Allows SwiftUI to skip body calls when message + context state are unchanged.
+// Both Message and Bool are Sendable, so comparing them is safe from any isolation.
+extension MessageBubble: Equatable {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message && lhs.isOutOfContext == rhs.isOutOfContext
     }
 }
