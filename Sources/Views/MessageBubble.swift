@@ -4,6 +4,7 @@ struct MessageBubble: View {
     let message: Message
     var isOutOfContext: Bool = false
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showCopied = false
     @State private var copyHover = false
 
@@ -117,7 +118,7 @@ struct MessageBubble: View {
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 4)
-                                        .background(Color(white: 0.88))
+                                        .background(colorScheme == .dark ? Color(white: 0.12) : Color(white: 0.88))
                                     }
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         Text(block.content)
@@ -125,7 +126,7 @@ struct MessageBubble: View {
                                             .textSelection(.enabled)
                                             .padding(10)
                                     }
-                                    .background(Color(white: 0.93))
+                                    .background(colorScheme == .dark ? Color(white: 0.15) : Color(white: 0.93))
                                 }
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
@@ -139,7 +140,7 @@ struct MessageBubble: View {
     private var bubbleBackground: Color {
         switch message.role {
         case .user: return Color(red: 0.0, green: 0.48, blue: 1.0)
-        case .assistant: return Color(white: 0.93)
+        case .assistant: return colorScheme == .dark ? Color(white: 0.18) : Color(white: 0.93)
         case .system: return Color.orange.opacity(0.12)
         }
     }
