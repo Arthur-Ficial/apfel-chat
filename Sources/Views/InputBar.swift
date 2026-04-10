@@ -20,6 +20,12 @@ struct InputBar: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    Button(action: { viewModel.speechInput?.errorMessage = nil }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -101,7 +107,7 @@ struct InputBar: View {
                 .help(viewModel.isStreaming ? "Stop response" : "Send message")
 
                 if viewModel.speechOutput != nil {
-                    Button(action: { viewModel.autoSpeak.toggle() }) {
+                    Button(action: { viewModel.toggleAutoSpeak() }) {
                         Image(systemName: viewModel.autoSpeak ? "speaker.wave.2.fill" : "speaker.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(viewModel.autoSpeak ? .white : .gray)
@@ -140,10 +146,7 @@ struct InputBar: View {
     }
 
     private var buttonBackground: Color {
-        if viewModel.isStreaming {
-            return .red
-        }
-        if canSend {
+        if viewModel.isStreaming || canSend {
             return Color(red: 0.0, green: 0.48, blue: 1.0)
         }
         return Color(nsColor: .controlBackgroundColor)

@@ -75,7 +75,6 @@ struct ApfelChatApp: App {
         .onChange(of: settingsVM.showSettings) { _, isShowing in
             if !isShowing {
                 chatVM.settings = settingsVM.toModelSettings()
-                chatVM.autoSpeak = settingsVM.autoSpeak
                 chatVM.ttsLanguage = settingsVM.ttsLanguage
             }
         }

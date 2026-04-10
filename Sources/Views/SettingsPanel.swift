@@ -89,7 +89,6 @@ struct SettingsPanel: View {
                     Text("Portuguese (BR)").tag("pt-BR")
                     Text("Japanese").tag("ja-JP")
                 }
-                Toggle("Auto-speak responses", isOn: $viewModel.autoSpeak)
             }
         }
         .formStyle(.grouped)

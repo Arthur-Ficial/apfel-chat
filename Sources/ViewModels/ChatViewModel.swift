@@ -12,6 +12,7 @@ final class ChatViewModel {
     var systemPrompt: String?
     var settings: ModelSettings = ModelSettings()
     var autoSpeak: Bool = AppDefaults.autoSpeak
+    var micPermissionDenied: Bool = false
     var ttsLanguage: String = AppDefaults.ttsLanguage
     var contextWindow: Int?
     var augeService: AugeService?
@@ -210,8 +211,15 @@ final class ChatViewModel {
             let granted = await stt.requestPermissions()
             if granted {
                 stt.startListening()
+            } else {
+                micPermissionDenied = true
             }
         }
+    }
+
+    func toggleAutoSpeak() {
+        autoSpeak.toggle()
+        UserDefaults.standard.set(autoSpeak, forKey: "ac_autoSpeak")
     }
 
     func speakLastResponse() {

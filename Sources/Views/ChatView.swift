@@ -67,6 +67,14 @@ struct ChatView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
         .background(Color(white: 0.98))
+        .alert("Microphone Access Required", isPresented: $viewModel.micPermissionDenied) {
+            Button("Open System Settings") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Voice input requires microphone access. Enable it in System Settings → Privacy & Security → Microphone.")
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -138,9 +146,13 @@ struct ChatView: View {
                 }
                 .padding(.vertical, 20)
             }
-            .onChange(of: viewModel.messages.count) {
+            .onChange(of: viewModel.messages.count) { oldCount, newCount in
                 guard !viewModel.isLoadingConversation else { return }
-                guard isFollowingTail || viewModel.messages.count <= 2 else { return }
+                guard newCount > oldCount else { return }
+                // Always scroll when user sends (last msg is user) — they're at the bottom by definition.
+                // For AI messages appearing, respect whether user has scrolled up.
+                let userJustSent = viewModel.messages.last?.role == .user
+                guard isFollowingTail || newCount <= 2 || userJustSent else { return }
                 withAnimation(.easeOut(duration: 0.18)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
