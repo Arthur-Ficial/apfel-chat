@@ -52,6 +52,7 @@ final class ChatViewModel {
     private let persistence: ChatPersistence
     let speechInput: (any SpeechInput)?
     let speechOutput: (any SpeechOutput)?
+    private var loadTask: Task<Void, Never>?
 
     init(
         chatService: ChatService,
@@ -135,13 +136,26 @@ final class ChatViewModel {
         isStreaming = false
     }
 
+    /// Switch to a conversation: cancel any in-flight load, clear immediately, load in background.
+    func switchTo(conversationId: String) {
+        loadTask?.cancel()
+        self.conversationId = conversationId
+        messages = []
+        errorMessage = nil
+        contextTruncationNotice = nil
+        contextCutoffIndex = nil
+        loadTask = Task { await loadMessages() }
+    }
+
     func loadMessages() async {
         guard let convId = conversationId else { return }
-        contextTruncationNotice = nil
         do {
-            messages = try await persistence.messages(for: convId)
+            let loaded = try await persistence.messages(for: convId)
+            guard !Task.isCancelled else { return }
+            messages = loaded
             recomputeContextCutoff()
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
     }

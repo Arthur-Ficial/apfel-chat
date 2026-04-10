@@ -5,10 +5,13 @@ import SQLite3
 
 final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
     private let db: OpaquePointer
+    // All SQLite work runs on this dedicated serial queue — never on the main thread.
+    private let queue = DispatchQueue(label: "apfel-chat.sqlite", qos: .userInitiated)
 
     init(path: String = SQLitePersistence.defaultPath()) throws {
         var dbPointer: OpaquePointer?
-        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        // NOMUTEX: we serialise ourselves via `queue`; no need for SQLite's own mutex.
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX
         guard sqlite3_open_v2(path, &dbPointer, flags, nil) == SQLITE_OK,
               let db = dbPointer else {
             let msg = dbPointer.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "Unknown"
@@ -17,8 +20,20 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
         }
         self.db = db
         sqlite3_exec(db, "PRAGMA journal_mode=WAL", nil, nil, nil)
+        sqlite3_exec(db, "PRAGMA synchronous=NORMAL", nil, nil, nil)
+        sqlite3_exec(db, "PRAGMA cache_size=-8000", nil, nil, nil)   // 8 MB page cache
         sqlite3_exec(db, "PRAGMA foreign_keys=ON", nil, nil, nil)
         try createTables()
+    }
+
+    /// Run a throwing block on the dedicated SQLite queue, bridging to async/await.
+    private func onQueue<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do { continuation.resume(returning: try work()) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
     }
 
     deinit { sqlite3_close(db) }
@@ -71,133 +86,137 @@ final class SQLitePersistence: ChatPersistence, @unchecked Sendable {
 
     func createConversation(title: String) async throws -> Conversation {
         let conv = Conversation(title: title)
-        let settingsJSON: String? = conv.modelSettings.flatMap {
-            try? String(data: JSONEncoder().encode($0), encoding: .utf8)
+        return try await onQueue {
+            let settingsJSON: String? = conv.modelSettings.flatMap {
+                try? String(data: JSONEncoder().encode($0), encoding: .utf8)
+            }
+            try self.execute(
+                "INSERT INTO conversations (id, title, system_prompt, created_at, updated_at, model_settings) VALUES (?, ?, ?, ?, ?, ?)",
+                bindings: [
+                    .text(conv.id), .text(conv.title), .textOrNull(conv.systemPrompt),
+                    .real(conv.createdAt.timeIntervalSince1970),
+                    .real(conv.updatedAt.timeIntervalSince1970),
+                    .textOrNull(settingsJSON),
+                ]
+            )
+            return conv
         }
-        let sql = """
-        INSERT INTO conversations (id, title, system_prompt, created_at, updated_at, model_settings)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """
-        try execute(sql, bindings: [
-            .text(conv.id), .text(conv.title), .textOrNull(conv.systemPrompt),
-            .real(conv.createdAt.timeIntervalSince1970),
-            .real(conv.updatedAt.timeIntervalSince1970),
-            .textOrNull(settingsJSON),
-        ])
-        return conv
     }
 
     func listConversations() async throws -> [Conversation] {
-        let sql = """
-        SELECT id, title, system_prompt, created_at, updated_at, model_settings
-        FROM conversations ORDER BY updated_at DESC
-        """
-        return try query(sql) { stmt in
-            let settingsJSON = columnTextOrNil(stmt, 5)
-            let settings: ModelSettings? = settingsJSON.flatMap {
-                try? JSONDecoder().decode(ModelSettings.self, from: $0.data(using: .utf8)!)
+        try await onQueue {
+            try self.query(
+                "SELECT id, title, system_prompt, created_at, updated_at, model_settings FROM conversations ORDER BY updated_at DESC"
+            ) { stmt in
+                let settingsJSON = self.columnTextOrNil(stmt, 5)
+                let settings: ModelSettings? = settingsJSON.flatMap {
+                    try? JSONDecoder().decode(ModelSettings.self, from: $0.data(using: .utf8)!)
+                }
+                return Conversation(
+                    id: String(cString: sqlite3_column_text(stmt, 0)),
+                    title: String(cString: sqlite3_column_text(stmt, 1)),
+                    systemPrompt: self.columnTextOrNil(stmt, 2),
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
+                    updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
+                    modelSettings: settings
+                )
             }
-            return Conversation(
-                id: String(cString: sqlite3_column_text(stmt, 0)),
-                title: String(cString: sqlite3_column_text(stmt, 1)),
-                systemPrompt: columnTextOrNil(stmt, 2),
-                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)),
-                updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
-                modelSettings: settings
-            )
         }
     }
 
     func deleteConversation(id: String) async throws {
-        try execute("DELETE FROM messages WHERE conversation_id = ?", bindings: [.text(id)])
-        try execute("DELETE FROM conversations WHERE id = ?", bindings: [.text(id)])
+        try await onQueue {
+            try self.execute("DELETE FROM messages WHERE conversation_id = ?", bindings: [.text(id)])
+            try self.execute("DELETE FROM conversations WHERE id = ?", bindings: [.text(id)])
+        }
     }
 
     func updateConversation(_ conv: Conversation) async throws {
-        let settingsJSON: String? = conv.modelSettings.flatMap {
-            try? String(data: JSONEncoder().encode($0), encoding: .utf8)
+        try await onQueue {
+            let settingsJSON: String? = conv.modelSettings.flatMap {
+                try? String(data: JSONEncoder().encode($0), encoding: .utf8)
+            }
+            try self.execute(
+                "UPDATE conversations SET title = ?, system_prompt = ?, updated_at = ?, model_settings = ? WHERE id = ?",
+                bindings: [
+                    .text(conv.title), .textOrNull(conv.systemPrompt),
+                    .real(conv.updatedAt.timeIntervalSince1970),
+                    .textOrNull(settingsJSON), .text(conv.id),
+                ]
+            )
         }
-        try execute(
-            """
-            UPDATE conversations SET title = ?, system_prompt = ?, updated_at = ?, model_settings = ?
-            WHERE id = ?
-            """,
-            bindings: [
-                .text(conv.title), .textOrNull(conv.systemPrompt),
-                .real(conv.updatedAt.timeIntervalSince1970),
-                .textOrNull(settingsJSON), .text(conv.id),
-            ]
-        )
     }
 
     // MARK: - Messages
 
     func addMessage(_ msg: Message, to conversationId: String) async throws {
-        let sql = """
-        INSERT INTO messages (id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        try execute(sql, bindings: [
-            .text(msg.id), .text(conversationId), .text(msg.role.rawValue),
-            .text(msg.content), .real(msg.timestamp.timeIntervalSince1970),
-            .intOrNull(msg.tokenCount), .intOrNull(msg.durationMs),
-            .int(msg.isStreaming ? 1 : 0),
-        ])
-        try execute(
-            "UPDATE conversations SET updated_at = ? WHERE id = ?",
-            bindings: [.real(Date().timeIntervalSince1970), .text(conversationId)]
-        )
-    }
-
-    func messages(for conversationId: String) async throws -> [Message] {
-        let sql = """
-        SELECT id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming
-        FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
-        """
-        return try query(sql, bindings: [.text(conversationId)]) { stmt in
-            Message(
-                id: String(cString: sqlite3_column_text(stmt, 0)),
-                conversationId: String(cString: sqlite3_column_text(stmt, 1)),
-                role: Role(rawValue: String(cString: sqlite3_column_text(stmt, 2))) ?? .user,
-                content: String(cString: sqlite3_column_text(stmt, 3)),
-                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
-                tokenCount: columnIntOrNil(stmt, 5),
-                durationMs: columnIntOrNil(stmt, 6),
-                isStreaming: sqlite3_column_int(stmt, 7) != 0
+        try await onQueue {
+            try self.execute(
+                "INSERT INTO messages (id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                bindings: [
+                    .text(msg.id), .text(conversationId), .text(msg.role.rawValue),
+                    .text(msg.content), .real(msg.timestamp.timeIntervalSince1970),
+                    .intOrNull(msg.tokenCount), .intOrNull(msg.durationMs),
+                    .int(msg.isStreaming ? 1 : 0),
+                ]
+            )
+            try self.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                bindings: [.real(Date().timeIntervalSince1970), .text(conversationId)]
             )
         }
     }
 
+    func messages(for conversationId: String) async throws -> [Message] {
+        try await onQueue {
+            try self.query(
+                "SELECT id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC",
+                bindings: [.text(conversationId)]
+            ) { stmt in
+                Message(
+                    id: String(cString: sqlite3_column_text(stmt, 0)),
+                    conversationId: String(cString: sqlite3_column_text(stmt, 1)),
+                    role: Role(rawValue: String(cString: sqlite3_column_text(stmt, 2))) ?? .user,
+                    content: String(cString: sqlite3_column_text(stmt, 3)),
+                    timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
+                    tokenCount: self.columnIntOrNil(stmt, 5),
+                    durationMs: self.columnIntOrNil(stmt, 6),
+                    isStreaming: sqlite3_column_int(stmt, 7) != 0
+                )
+            }
+        }
+    }
+
     func updateMessage(_ msg: Message) async throws {
-        try execute(
-            """
-            UPDATE messages SET content = ?, token_count = ?, duration_ms = ?, is_streaming = ?
-            WHERE id = ?
-            """,
-            bindings: [
-                .text(msg.content), .intOrNull(msg.tokenCount),
-                .intOrNull(msg.durationMs), .int(msg.isStreaming ? 1 : 0),
-                .text(msg.id),
-            ]
-        )
+        try await onQueue {
+            try self.execute(
+                "UPDATE messages SET content = ?, token_count = ?, duration_ms = ?, is_streaming = ? WHERE id = ?",
+                bindings: [
+                    .text(msg.content), .intOrNull(msg.tokenCount),
+                    .intOrNull(msg.durationMs), .int(msg.isStreaming ? 1 : 0),
+                    .text(msg.id),
+                ]
+            )
+        }
     }
 
     func search(query searchTerm: String) async throws -> [Message] {
-        let sql = """
-        SELECT id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming
-        FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 100
-        """
-        return try self.query(sql, bindings: [.text("%\(searchTerm)%")]) { stmt in
-            Message(
-                id: String(cString: sqlite3_column_text(stmt, 0)),
-                conversationId: String(cString: sqlite3_column_text(stmt, 1)),
-                role: Role(rawValue: String(cString: sqlite3_column_text(stmt, 2))) ?? .user,
-                content: String(cString: sqlite3_column_text(stmt, 3)),
-                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
-                tokenCount: columnIntOrNil(stmt, 5),
-                durationMs: columnIntOrNil(stmt, 6),
-                isStreaming: sqlite3_column_int(stmt, 7) != 0
-            )
+        try await onQueue {
+            try self.query(
+                "SELECT id, conversation_id, role, content, timestamp, token_count, duration_ms, is_streaming FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT 100",
+                bindings: [.text("%\(searchTerm)%")]
+            ) { stmt in
+                Message(
+                    id: String(cString: sqlite3_column_text(stmt, 0)),
+                    conversationId: String(cString: sqlite3_column_text(stmt, 1)),
+                    role: Role(rawValue: String(cString: sqlite3_column_text(stmt, 2))) ?? .user,
+                    content: String(cString: sqlite3_column_text(stmt, 3)),
+                    timestamp: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4)),
+                    tokenCount: self.columnIntOrNil(stmt, 5),
+                    durationMs: self.columnIntOrNil(stmt, 6),
+                    isStreaming: sqlite3_column_int(stmt, 7) != 0
+                )
+            }
         }
     }
 

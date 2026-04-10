@@ -43,8 +43,7 @@ struct ApfelChatApp: App {
     private func mainContent(listVM: ConversationListViewModel, chatVM: ChatViewModel) -> some View {
         NavigationSplitView {
             ConversationListView(viewModel: listVM) { conversationId in
-                chatVM.conversationId = conversationId
-                Task { await chatVM.loadMessages() }
+                chatVM.switchTo(conversationId: conversationId)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -154,8 +153,7 @@ struct ApfelChatApp: App {
             }
             if let first = listVM.conversations.first {
                 listVM.selectedId = first.id
-                chatVM.conversationId = first.id
-                await chatVM.loadMessages()
+                chatVM.switchTo(conversationId: first.id)
             }
 
             self.conversationListVM = listVM

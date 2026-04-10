@@ -76,7 +76,13 @@ final class ServerManager {
     }
 
     nonisolated static func buildArguments(port: Int) -> [String] {
-        ["--serve", "--port", "\(port)", "--cors"]
+        // --permissive: reduces Apple Intelligence safety filter false refusals.
+        // Default on; user can disable in Advanced Settings (takes effect on next launch).
+        let isPermissive = UserDefaults.standard.object(forKey: "ac_permissive") == nil
+            || UserDefaults.standard.bool(forKey: "ac_permissive")
+        var args = ["--serve", "--port", "\(port)", "--cors"]
+        if isPermissive { args.append("--permissive") }
+        return args
     }
 
     func tryExistingServer() async -> Int? {

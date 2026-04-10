@@ -12,6 +12,7 @@ final class SettingsViewModel {
     var modelName: String = AppDefaults.modelName
     var ttsLanguage: String = AppDefaults.ttsLanguage
     var autoSpeak: Bool = AppDefaults.autoSpeak
+    var permissive: Bool = true   // pass --permissive to apfel (reduces false refusals)
     var showSettings: Bool = false
 
     private let defaults: UserDefaults
@@ -37,6 +38,7 @@ final class SettingsViewModel {
         defaults.set(modelName, forKey: "ac_modelName")
         defaults.set(ttsLanguage, forKey: "ac_ttsLanguage")
         defaults.set(autoSpeak, forKey: "ac_autoSpeak")
+        defaults.set(permissive, forKey: "ac_permissive")
     }
 
     func load() {
@@ -54,5 +56,9 @@ final class SettingsViewModel {
         if let model = defaults.string(forKey: "ac_modelName"), !model.isEmpty { modelName = model }
         if let lang = defaults.string(forKey: "ac_ttsLanguage"), !lang.isEmpty { ttsLanguage = lang }
         autoSpeak = defaults.bool(forKey: "ac_autoSpeak")
+        // Default permissive = true; only override if explicitly set to false
+        if defaults.object(forKey: "ac_permissive") != nil {
+            permissive = defaults.bool(forKey: "ac_permissive")
+        }
     }
 }

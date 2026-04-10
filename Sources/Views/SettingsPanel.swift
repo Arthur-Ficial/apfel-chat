@@ -114,6 +114,17 @@ struct SettingsPanel: View {
                 }
             }
 
+            Section("Model Behaviour") {
+                Toggle(isOn: $viewModel.permissive) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Permissive mode")
+                        Text("Reduces false refusals from Apple Intelligence (--permissive flag). Takes effect on next launch.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section("Reproducibility") {
                 LabeledContent("Seed") {
                     HStack(spacing: 6) {
