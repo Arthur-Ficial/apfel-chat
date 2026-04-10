@@ -46,7 +46,7 @@ apfel-chat is a native macOS AI chat app powered entirely by Apple Intelligence 
 
 - **Type or speak** your message — built-in speech recognition, no cloud transcription
 - **Read or listen** to the reply — streaming text-to-speech as the model responds
-- **Drop an image** — OCR + visual analysis lands as a message instantly
+- **Drop an image** — Apple Vision reads it on-device (OCR, classification, face detection) and the result lands as a message instantly
 - **Pick up where you left off** — every conversation stored locally in SQLite
 - **Search across conversations** — full-text search across all your history
 - **Tune the model** — temperature, context window, max tokens, custom system prompt
@@ -60,7 +60,7 @@ apfel-chat is a native macOS AI chat app powered entirely by Apple Intelligence 
 | **Streaming** | Token-by-token SSE output, real-time markdown rendering |
 | **Speech input** | ohr integration + on-device Speech framework fallback |
 | **Speech output** | Auto-speak mode — reads every reply aloud |
-| **Image analysis** | Drop any image → auge OCR + vision → instant AI message |
+| **Apple Vision image reading** | Drop any image → Apple Vision OCR + classification + faces → instant message (no AI for image reading) |
 | **Markdown rendering** | Code blocks, inline code, bold, italic — rendered natively |
 | **Token counter** | Live context usage + configurable context window cap |
 | **Auto-title** | Conversation title generated from first exchange |
@@ -159,9 +159,9 @@ Enable **Auto-speak** in Settings to have every response read aloud automaticall
 
 Press the microphone button in the input bar to dictate. apfel-chat uses `ohr` if available, falling back to the on-device Speech framework.
 
-### Image analysis
+### Image reading (Apple Vision)
 
-Drag and drop any image file onto the chat window. apfel-chat runs OCR and visual analysis via `auge` and adds the result as a user message — the AI replies automatically.
+Drag and drop any image file onto the chat window. apfel-chat passes it to `auge`, which runs Apple Vision on-device: OCR (text extraction), image classification, barcode detection, and face counting. No AI is used for the image reading — it is Apple's deterministic Vision framework. The structured result is added as a user message and the AI replies automatically.
 
 ### Model settings
 
@@ -180,7 +180,7 @@ App/AppMain.swift
   ├─ Services/ServerManager           — spawns apfel --serve
   ├─ Services/ApfelChatService        — SSE streaming via /v1/chat/completions
   ├─ Services/SQLitePersistence       — conversations + messages in SQLite
-  ├─ Services/AugeService             — image OCR + vision analysis
+  ├─ Services/AugeService             — Apple Vision OCR + classification via auge
   ├─ Services/OhrSpeechInput          — speech-to-text via ohr
   ├─ Services/OnDeviceSpeechInput     — fallback STT via Speech framework
   ├─ Services/OnDeviceSpeechOutput    — TTS via AVSpeechSynthesizer
