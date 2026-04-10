@@ -633,6 +633,23 @@
       margin-top: 4px;
     }
 
+    /* ── APFEL ENGINE ── */
+    .engine-cols { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
+    .engine-col { border-radius: var(--r); padding: 22px 24px; }
+    .engine-good { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .engine-limits { background: #fafafa; border: 1px solid var(--bdl); }
+    .engine-col h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+    .engine-good h3 { color: #15803d; }
+    .engine-limits h3 { color: var(--text2); }
+    .engine-col ul { padding-left: 18px; }
+    .engine-col li { font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 6px; }
+    .engine-col li strong { color: var(--text); }
+    .engine-link {
+      font-size: 13px; color: var(--muted); border-top: 1px solid var(--bdl);
+      padding-top: 16px; line-height: 1.6;
+    }
+    .engine-link a { color: var(--brand); text-decoration: none; font-weight: 600; }
+
     /* ── DESKTOP ── */
     @media (min-width: 760px) {
       nav { padding: 14px 48px; }
@@ -669,6 +686,7 @@
       .i-more-inner { display: grid; grid-template-columns: repeat(3, 1fr); }
 
       .feat-grid { grid-template-columns: repeat(3, 1fr); }
+      .engine-cols { grid-template-columns: 1fr 1fr; }
 
       .screens { grid-template-columns: repeat(2, 1fr); }
     }
@@ -954,6 +972,42 @@ cd apfel-chat &amp;&amp; make install</pre>
         <p>Code blocks, bold, italic, lists, and headings render natively. Copy any response with one click.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- Powered by apfel -->
+<section class="sec-white" id="engine">
+  <div class="wrap">
+    <div class="lbl">Under the hood</div>
+    <h2 class="sh">Powered by <a href="https://apfel.franzai.com" style="color:var(--brand);text-decoration:none">apfel</a>.</h2>
+    <p class="sub">apfel-chat is a native macOS UI built on top of <a href="https://apfel.franzai.com" style="color:var(--brand);font-weight:600">apfel</a>, an open-source CLI and OpenAI-compatible server that wraps Apple's on-device foundation model. apfel handles the AI inference. apfel-chat handles the conversation history, streaming UI, speech I/O, and image analysis on top of it.</p>
+    <div class="engine-cols">
+      <div class="engine-col engine-good">
+        <h3>Where apfel-chat works well</h3>
+        <ul>
+          <li>Quick questions, explanations, and lookups</li>
+          <li>Drafting, editing, and rewriting text</li>
+          <li>Brainstorming and creative tasks</li>
+          <li>Code explanation and short coding tasks</li>
+          <li>Privacy-sensitive topics: medical, legal, personal</li>
+          <li>Working offline: planes, travel, no Wi-Fi</li>
+          <li>Daily use without a subscription or API key</li>
+        </ul>
+      </div>
+      <div class="engine-col engine-limits">
+        <h3>Honest limitations</h3>
+        <ul>
+          <li><strong>4,096-token context window.</strong> Roughly 3,000 words across the entire conversation. Long documents, large codebases, or extended chats will be cut off at the edges.</li>
+          <li><strong>One fixed model.</strong> You cannot switch to GPT-4 or Claude Opus. The on-device model is capable but less powerful than frontier cloud models for complex multi-step reasoning.</li>
+          <li><strong>Language requirements.</strong> Your device language and Siri language must match and be set to a supported language (English, German, French, Spanish, Italian, Japanese, Korean, Chinese, and more). Mismatched settings will prevent the model from loading.</li>
+          <li><strong>No web search or image generation.</strong> The model has no internet access and cannot generate images.</li>
+          <li><strong>macOS 26 Tahoe required</strong>, Apple Silicon (M1 or later), Apple Intelligence enabled.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="engine-link">
+      <a href="https://apfel.franzai.com">apfel.franzai.com</a>. The AI engine behind apfel-chat. Also available standalone as a UNIX CLI and OpenAI-compatible API server for developers.
+    </p>
   </div>
 </section>
 
