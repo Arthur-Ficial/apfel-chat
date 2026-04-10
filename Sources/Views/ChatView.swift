@@ -137,14 +137,15 @@ struct ChatView: View {
                         .equatable()
                         .id(msg.id)
                     }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
-                        .onAppear { isFollowingTail = true }
-                        .onDisappear { isFollowingTail = false }
                 }
                 .padding(.vertical, 20)
+
+                // Sentinel is outside the VStack so scrollTo("bottom") reaches the true last pixel.
+                Color.clear
+                    .frame(height: 1)
+                    .id("bottom")
+                    .onAppear { isFollowingTail = true }
+                    .onDisappear { isFollowingTail = false }
             }
             .onChange(of: viewModel.messages.count) { oldCount, newCount in
                 guard !viewModel.isLoadingConversation else { return }
