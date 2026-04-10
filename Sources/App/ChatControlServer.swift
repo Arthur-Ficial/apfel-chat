@@ -158,6 +158,16 @@ class ChatControlServer {
             let autoSpeak = await MainActor.run { chatVM.autoSpeak }
             response = jsonDict(["speaking": speaking, "auto_speak": autoSpeak])
 
+        // === UPDATE ===
+        case ("GET", "/update"):
+            response = await getUpdateStatus(settingsVM)
+        case ("POST", "/update/check"):
+            await settingsVM.checkForUpdate()
+            response = await getUpdateStatus(settingsVM)
+        case ("POST", "/update/install"):
+            await MainActor.run { settingsVM.installUpdate() }
+            response = await getUpdateStatus(settingsVM)
+
         // === HELP ===
         default:
             response = helpResponse()
@@ -333,6 +343,52 @@ class ChatControlServer {
         return jsonDict(["status": "speaking", "text": text])
     }
 
+    // MARK: - Update
+
+    private static func getUpdateStatus(_ settingsVM: SettingsViewModel) async -> String {
+        await MainActor.run {
+            let state: String
+            var latest: Any = NSNull()
+            var updateAvailable = false
+
+            switch settingsVM.updateState {
+            case .idle:
+                state = "idle"
+            case .checking:
+                state = "checking"
+            case .upToDate:
+                state = "up_to_date"
+                latest = settingsVM.currentVersion
+            case .updateAvailable(let v):
+                state = "update_available"
+                latest = v
+                updateAvailable = true
+            case .installing(let v):
+                state = "installing"
+                latest = v
+                updateAvailable = true
+            case .installed(let v):
+                state = "installed"
+                latest = v
+            case .error(let m):
+                return jsonDict([
+                    "state": "error", "error": m,
+                    "current_version": settingsVM.currentVersion,
+                    "update_available": false,
+                    "install_method": settingsVM.isHomebrewInstall ? "homebrew" : "direct",
+                ])
+            }
+
+            return jsonDict([
+                "state": state,
+                "current_version": settingsVM.currentVersion,
+                "latest_version": latest,
+                "update_available": updateAvailable,
+                "install_method": settingsVM.isHomebrewInstall ? "homebrew" : "direct",
+            ])
+        }
+    }
+
     // MARK: - Help
 
     nonisolated private static func helpResponse() -> String {
@@ -366,6 +422,9 @@ class ChatControlServer {
                 "POST /speak                  Speak text: {\"text\": \"...\"}",
                 "POST /stop-speaking          Stop TTS",
                 "GET  /speech                 Speech status",
+                "GET  /update                 Update status and latest version",
+                "POST /update/check           Check GitHub for latest release",
+                "POST /update/install         Install update (brew upgrade or opens download page)",
             ]
         ])
     }

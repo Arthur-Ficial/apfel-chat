@@ -48,4 +48,29 @@ struct SettingsViewModelTests {
         #expect(vm2.ttsLanguage == "de-DE")
         #expect(vm2.autoSpeak == true)
     }
+
+    @Test("Default update state is idle")
+    func defaultUpdateStateIsIdle() {
+        let vm = SettingsViewModel(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        #expect(vm.updateState == .idle)
+    }
+
+    @Test("isVersionNewer: patch update")
+    func versionNewerPatch() {
+        #expect(SettingsViewModel.isVersionNewer("1.1.6", than: "1.1.5") == true)
+        #expect(SettingsViewModel.isVersionNewer("1.1.5", than: "1.1.5") == false)
+        #expect(SettingsViewModel.isVersionNewer("1.1.4", than: "1.1.5") == false)
+    }
+
+    @Test("isVersionNewer: semver-aware minor (1.10.0 > 1.9.0)")
+    func versionNewerMinorSemver() {
+        #expect(SettingsViewModel.isVersionNewer("1.10.0", than: "1.9.0") == true)
+        #expect(SettingsViewModel.isVersionNewer("1.9.0", than: "1.10.0") == false)
+    }
+
+    @Test("isVersionNewer: major bump")
+    func versionNewerMajor() {
+        #expect(SettingsViewModel.isVersionNewer("2.0.0", than: "1.99.99") == true)
+        #expect(SettingsViewModel.isVersionNewer("1.0.0", than: "2.0.0") == false)
+    }
 }

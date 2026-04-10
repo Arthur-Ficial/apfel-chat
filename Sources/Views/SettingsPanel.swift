@@ -99,6 +99,93 @@ struct SettingsPanel: View {
                     Text("Japanese").tag("ja-JP")
                 }
             }
+
+            Section("About") {
+                LabeledContent("Version") {
+                    Text(viewModel.currentVersion)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                switch viewModel.updateState {
+                case .idle:
+                    Button("Check for Update") {
+                        Task { await viewModel.checkForUpdate() }
+                    }
+
+                case .checking:
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Checking...").foregroundStyle(.secondary)
+                    }
+
+                case .upToDate:
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Text("You're up to date").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Check Again") { Task { await viewModel.checkForUpdate() } }
+                            .buttonStyle(.borderless)
+                    }
+
+                case .updateAvailable(let version):
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Version \(version) available")
+                            if viewModel.isHomebrewInstall {
+                                Text("Runs brew upgrade automatically")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Install") { viewModel.installUpdate() }
+                            .buttonStyle(.borderedProminent)
+                    }
+
+                case .installing(let version):
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Installing \(version)...").foregroundStyle(.secondary)
+                        }
+                        if !viewModel.brewUpgradeOutput.isEmpty {
+                            ScrollView {
+                                Text(viewModel.brewUpgradeOutput)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.frame(maxHeight: 80)
+                        }
+                    }
+
+                case .installed(let version):
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            Text("Version \(version) installed").foregroundStyle(.secondary)
+                        }
+                        if !viewModel.brewUpgradeOutput.isEmpty {
+                            ScrollView {
+                                Text(viewModel.brewUpgradeOutput)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.frame(maxHeight: 60)
+                        }
+                        Button("Relaunch to Apply") { viewModel.relaunch() }
+                            .buttonStyle(.borderedProminent)
+                    }
+
+                case .error(let message):
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text(message).foregroundStyle(.secondary).font(.caption)
+                        Spacer()
+                        Button("Retry") { Task { await viewModel.checkForUpdate() } }
+                            .buttonStyle(.borderless)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }
