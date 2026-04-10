@@ -54,11 +54,16 @@ struct SettingsPanel: View {
 
                 LabeledContent("Max Tokens") {
                     HStack(spacing: 6) {
-                        TextField("no limit", text: maxTokensBinding)
+                        TextField("", text: maxTokensBinding)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
+                            .frame(width: 80)
                             .multilineTextAlignment(.trailing)
-                        if viewModel.maxTokens != nil {
+                        if viewModel.maxTokens == nil {
+                            Text("no limit")
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize()
+                        } else {
                             Button(action: { viewModel.maxTokens = nil }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
@@ -112,11 +117,16 @@ struct SettingsPanel: View {
             Section("Reproducibility") {
                 LabeledContent("Seed") {
                     HStack(spacing: 6) {
-                        TextField("random", value: $viewModel.seed, format: .number)
+                        TextField("", value: $viewModel.seed, format: .number)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
+                            .frame(width: 80)
                             .multilineTextAlignment(.trailing)
-                        if viewModel.seed != nil {
+                        if viewModel.seed == nil {
+                            Text("random")
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize()
+                        } else {
                             Button(action: { viewModel.seed = nil }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
@@ -144,7 +154,13 @@ struct SettingsPanel: View {
     private var maxTokensBinding: Binding<String> {
         Binding(
             get: { viewModel.maxTokens.map { "\($0)" } ?? "" },
-            set: { viewModel.maxTokens = Int($0) }
+            set: { str in
+                if str.isEmpty {
+                    viewModel.maxTokens = nil
+                } else if let v = Int(str) {
+                    viewModel.maxTokens = max(1, min(4096, v))
+                }
+            }
         )
     }
 }
