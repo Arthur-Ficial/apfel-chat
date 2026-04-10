@@ -68,7 +68,7 @@ struct ApfelChatApp: App {
                     }
                 }
         }
-        .navigationTitle("apfel chat")
+        .navigationTitle(windowTitle(listVM: listVM))
         .sheet(isPresented: $settingsVM.showSettings) {
             SettingsPanel(viewModel: settingsVM)
         }
@@ -79,6 +79,15 @@ struct ApfelChatApp: App {
             }
         }
         .preferredColorScheme(settingsVM.resolvedColorScheme)
+    }
+
+    private func windowTitle(listVM: ConversationListViewModel) -> String {
+        guard let id = listVM.selectedId,
+              let conv = listVM.conversations.first(where: { $0.id == id }),
+              conv.title != "New Chat" else {
+            return "apfel chat"
+        }
+        return conv.title
     }
 
     private var loadingView: some View {
