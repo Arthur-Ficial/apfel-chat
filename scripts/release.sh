@@ -99,17 +99,19 @@ pass() { print "    [PASS] $1"; }
 fail() { print "    [FAIL] $1" >&2; FAIL=1; }
 
 # 1. GitHub release exists and has all expected assets
-RELEASE_JSON="$(gh release view "$TAG" --json assets,draft,tagName 2>/dev/null)"
-[[ "$(print "$RELEASE_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['draft'])")" == "False" ]] \
+RELEASE_TMPFILE="$(mktemp)"
+gh release view "$TAG" --json assets,draft,tagName > "$RELEASE_TMPFILE" 2>/dev/null
+[[ "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['draft'])" "$RELEASE_TMPFILE")" == "False" ]] \
     && pass "GitHub release $TAG is published" || fail "GitHub release $TAG is draft or missing"
 
 for ASSET in "${APP_NAME}-${TAG}-macos-${ARCH}.zip" \
              "${APP_NAME}-macos-${ARCH}.zip" \
              "${APP_NAME}-${TAG}-cli-macos-${ARCH}.tar.gz" \
              "SHA256SUMS" "${APP_NAME}.rb"; do
-    print "$RELEASE_JSON" | python3 -c "import json,sys; names=[a['name'] for a in json.load(sys.stdin)['assets']]; exit(0 if '$ASSET' in names else 1)" \
+    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); names=[a['name'] for a in d['assets']]; exit(0 if sys.argv[2] in names else 1)" "$RELEASE_TMPFILE" "$ASSET" \
         && pass "Asset present: $ASSET" || fail "Asset MISSING: $ASSET"
 done
+rm -f "$RELEASE_TMPFILE"
 
 # 2. Versioned ZIP is downloadable and SHA256 matches
 DOWNLOAD_DIR="$(mktemp -d)"
