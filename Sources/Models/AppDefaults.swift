@@ -11,4 +11,5 @@ enum AppDefaults {
     static let ttsLanguage = "en-US"
     static let serverPortStart = 11440
     static let apiPort: UInt16 = 11441
+    static let appearance = "system"  // "system", "light", "dark"
 }

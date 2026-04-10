@@ -298,6 +298,7 @@ class ChatControlServer {
                 "model_name": settingsVM.modelName,
                 "tts_language": settingsVM.ttsLanguage,
                 "auto_speak": settingsVM.autoSpeak,
+                "appearance": settingsVM.appearance,
             ])
         }
     }
@@ -315,6 +316,7 @@ class ChatControlServer {
             if let v = obj["model_name"] as? String { settingsVM.modelName = v }
             if let v = obj["tts_language"] as? String { settingsVM.ttsLanguage = v }
             if let v = obj["auto_speak"] as? Bool { settingsVM.autoSpeak = v }
+            if let v = obj["appearance"] as? String, ["system","light","dark"].contains(v) { settingsVM.appearance = v }
             settingsVM.save()
         }
         return ok()
@@ -351,7 +353,7 @@ class ChatControlServer {
                 "POST /clear                  Clear chat",
                 "POST /system-prompt          Set system prompt: {\"prompt\": \"text\"}",
                 "GET  /settings               Get settings",
-                "POST /settings               Update settings: {\"temperature\": 0.7, ...}",
+                "POST /settings               Update settings: {\"temperature\": 0.7, \"appearance\": \"system|light|dark\", ...}",
                 "POST /settings/show          Open settings panel",
                 "POST /settings/hide          Close settings panel",
                 "POST /input                  Set input text: {\"text\": \"...\"}",

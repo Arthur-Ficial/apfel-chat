@@ -78,6 +78,15 @@ struct SettingsPanel: View {
                 Toggle("JSON Mode", isOn: $viewModel.jsonMode)
             }
 
+            Section("Appearance") {
+                Picker("Theme", selection: $viewModel.appearance) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Speech") {
                 Picker("Language", selection: $viewModel.ttsLanguage) {
                     Text("English (US)").tag("en-US")

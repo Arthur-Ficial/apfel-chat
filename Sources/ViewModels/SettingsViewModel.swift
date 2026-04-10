@@ -13,7 +13,16 @@ final class SettingsViewModel {
     var ttsLanguage: String = AppDefaults.ttsLanguage
     var autoSpeak: Bool = AppDefaults.autoSpeak
     var permissive: Bool = true   // pass --permissive to apfel (reduces false refusals)
+    var appearance: String = AppDefaults.appearance  // "system", "light", "dark"
     var showSettings: Bool = false
+
+    var resolvedColorScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
 
     private let defaults: UserDefaults
 
@@ -39,6 +48,7 @@ final class SettingsViewModel {
         defaults.set(ttsLanguage, forKey: "ac_ttsLanguage")
         defaults.set(autoSpeak, forKey: "ac_autoSpeak")
         defaults.set(permissive, forKey: "ac_permissive")
+        defaults.set(appearance, forKey: "ac_appearance")
     }
 
     func load() {
@@ -60,5 +70,6 @@ final class SettingsViewModel {
         if defaults.object(forKey: "ac_permissive") != nil {
             permissive = defaults.bool(forKey: "ac_permissive")
         }
+        if let a = defaults.string(forKey: "ac_appearance"), !a.isEmpty { appearance = a }
     }
 }

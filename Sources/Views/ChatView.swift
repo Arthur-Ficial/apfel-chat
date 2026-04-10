@@ -66,7 +66,7 @@ struct ChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.contextTruncationNotice)
-        .background(Color(white: 0.98))
+        .background(Color(nsColor: .windowBackgroundColor))
         .alert("Microphone Access Required", isPresented: $viewModel.micPermissionDenied) {
             Button("Open System Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
@@ -95,7 +95,7 @@ struct ChatView: View {
             Spacer()
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 52, weight: .ultraLight))
-                .foregroundStyle(Color(white: 0.8))
+                .foregroundStyle(.quaternary)
             Text("Start a conversation")
                 .font(.title2)
                 .fontWeight(.medium)

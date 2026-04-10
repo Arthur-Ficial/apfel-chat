@@ -78,6 +78,7 @@ struct ApfelChatApp: App {
                 chatVM.ttsLanguage = settingsVM.ttsLanguage
             }
         }
+        .preferredColorScheme(settingsVM.resolvedColorScheme)
     }
 
     private var loadingView: some View {
@@ -88,7 +89,7 @@ struct ApfelChatApp: App {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.white)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func errorView(_ message: String) -> some View {
@@ -106,7 +107,7 @@ struct ApfelChatApp: App {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.white)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func startup() async {
