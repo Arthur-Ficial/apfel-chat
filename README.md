@@ -65,7 +65,7 @@ apfel-chat is a native macOS AI chat app powered entirely by Apple Intelligence 
 | **Token counter** | Live context usage + configurable context window cap |
 | **Auto-title** | Conversation title generated from first exchange |
 | **Model settings** | Temperature, max tokens, context window, system prompt |
-| **74 tests** | ViewModel, persistence, SSE parser, service layer, image analysis |
+| **77 tests** | ViewModel, persistence, SSE parser, service layer, image analysis |
 
 ---
 
@@ -210,7 +210,7 @@ make dist            # build release zip + CLI tarball + checksums
 make release         # full release: test → build → sign → notarise → tag → push → GitHub release → site deploy
 ```
 
-Tests cover the SSE parser, chat service, image analysis, persistence, ViewModels, and server manager. All 74 pass on every release.
+Tests cover the SSE parser, chat service, image analysis, persistence, ViewModels, and server manager. All 77 pass on every release.
 
 ---
 

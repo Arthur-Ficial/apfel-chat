@@ -278,4 +278,44 @@ struct ChatViewModelTests {
         await vm.handleImageDrop(urls: [url])
         #expect(vm.isAnalyzingImage == false)
     }
+
+    @Test("toggleAutoSpeak flips autoSpeak and writes to UserDefaults")
+    func toggleAutoSpeakPersists() async throws {
+        let (vm, _, _) = makeVM()
+        let before = vm.autoSpeak
+
+        vm.toggleAutoSpeak()
+
+        #expect(vm.autoSpeak == !before)
+        #expect(UserDefaults.standard.bool(forKey: "ac_autoSpeak") == vm.autoSpeak)
+
+        // Restore so test doesn't pollute other runs
+        vm.toggleAutoSpeak()
+    }
+
+    @Test("Mic permission denied sets micPermissionDenied flag")
+    func micPermissionDeniedSetsFlag() async throws {
+        let (vm, _, _) = makeVM()
+        let stt = vm.speechInput as! MockSpeechInput
+        stt.permissionGranted = false
+        #expect(vm.micPermissionDenied == false, "sanity: starts false")
+
+        await vm.toggleListening()
+
+        #expect(stt.isListening == false)
+        #expect(vm.micPermissionDenied == true, "must be true after denied permission")
+    }
+
+    @Test("Mic permission granted does not set micPermissionDenied")
+    func micPermissionGrantedClearFlag() async throws {
+        let (vm, _, _) = makeVM()
+        let stt = vm.speechInput as! MockSpeechInput
+        stt.permissionGranted = true
+        vm.micPermissionDenied = false
+
+        await vm.toggleListening()
+
+        #expect(vm.micPermissionDenied == false)
+        #expect(stt.isListening == true)
+    }
 }
