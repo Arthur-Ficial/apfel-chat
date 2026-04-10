@@ -79,6 +79,26 @@ swift test --filter ApfelChatTests.SSEParserTests  # specific test class
 All ViewModels tested with mock services. SQLite tested with :memory: database.
 SSE parser tested with fixture data. No UI tests — views are thin.
 
+## Handling GitHub Issues
+
+When a new issue comes in, follow this process:
+
+1. **Fetch** the full issue with `gh issue view <n> --repo Arthur-Ficial/apfel-chat --json body,comments,title,author,labels`
+2. **Vet** - is it a real bug, valid feature request, or noise?
+   - Does it align with the purpose (fast, private, local macOS chat)?
+   - Can you reproduce it or trace the root cause in code?
+   - Check comments for additional context
+3. **Fix** if valid:
+   - Write tests first (TDD) for bugs
+   - Keep changes minimal and focused
+   - Run `swift test` - all tests must pass
+4. **Release** if code changed - see "Release" below
+5. **Close** the issue with a short, truthful comment:
+   - What was the problem and root cause
+   - What was fixed (or why closed without a fix)
+   - How to update (`brew upgrade apfel-chat` or download from releases)
+6. **Homebrew tap:** cask files live in `Casks/` in `Arthur-Ficial/homebrew-tap` (NOT `Formula/`). Formula files for CLI tools go in `Formula/`.
+
 ## Release
 
 ```bash
