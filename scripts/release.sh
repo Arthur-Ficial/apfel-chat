@@ -60,6 +60,19 @@ fi
 rm -rf "$VERIFY_DIR"
 print "==> Notarisation ticket verified."
 
+# ── Update docs screenshots (README assets) ─────────────────────────────────
+print ""
+print "==> Updating docs/ screenshots..."
+mkdir -p "$ROOT_DIR/docs"
+cp "$ROOT_DIR/site/img/screen-chat.png"  "$ROOT_DIR/docs/screen-chat.png"
+cp "$ROOT_DIR/site/img/screen-chat2.png" "$ROOT_DIR/docs/screen-conversations.png"
+cp "$ROOT_DIR/site/img/screen-image.png" "$ROOT_DIR/docs/screen-image.png"
+
+if ! git -C "$ROOT_DIR" diff --quiet docs/; then
+    git -C "$ROOT_DIR" add docs/
+    git -C "$ROOT_DIR" commit -m "chore: update docs screenshots for $TAG"
+fi
+
 # ── Git tag + push ──────────────────────────────────────────────────────────
 print ""
 print "==> Tagging $TAG and pushing..."
