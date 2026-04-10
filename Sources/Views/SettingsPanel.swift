@@ -30,7 +30,7 @@ struct SettingsPanel: View {
                     .tabItem { Label("Advanced", systemImage: "wrench") }
             }
         }
-        .frame(minWidth: 360, idealWidth: 420, maxWidth: 520, minHeight: 400, idealHeight: 480, maxHeight: 700)
+        .frame(minWidth: 440, idealWidth: 520, maxWidth: 640, minHeight: 520, idealHeight: 620, maxHeight: 860)
         .onDisappear { viewModel.save() }
     }
 
@@ -38,68 +38,6 @@ struct SettingsPanel: View {
 
     private var generalTab: some View {
         Form {
-            Section("Model") {
-                LabeledContent {
-                    HStack {
-                        Slider(value: temperatureBinding, in: 0...2, step: 0.1)
-                            .frame(maxWidth: 160)
-                        Text(String(format: "%.1f", viewModel.temperature ?? AppDefaults.temperature))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .frame(width: 30)
-                    }
-                } label: {
-                    Text("Temperature")
-                }
-
-                LabeledContent("Max Tokens") {
-                    HStack(spacing: 6) {
-                        TextField("", text: maxTokensBinding)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .multilineTextAlignment(.trailing)
-                        if viewModel.maxTokens == nil {
-                            Text("no limit")
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .fixedSize()
-                        } else {
-                            Button(action: { viewModel.maxTokens = nil }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                                    .font(.system(size: 14))
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Reset to no limit")
-                        }
-                    }
-                }
-
-                Toggle("JSON Mode", isOn: $viewModel.jsonMode)
-            }
-
-            Section("Appearance") {
-                Picker("Theme", selection: $viewModel.appearance) {
-                    Text("System").tag("system")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Speech") {
-                Picker("Language", selection: $viewModel.ttsLanguage) {
-                    Text("English (US)").tag("en-US")
-                    Text("English (UK)").tag("en-GB")
-                    Text("German").tag("de-DE")
-                    Text("French").tag("fr-FR")
-                    Text("Spanish").tag("es-ES")
-                    Text("Italian").tag("it-IT")
-                    Text("Portuguese (BR)").tag("pt-BR")
-                    Text("Japanese").tag("ja-JP")
-                }
-            }
-
             Section("About") {
                 LabeledContent("Version") {
                     Text(viewModel.currentVersion)
@@ -186,6 +124,69 @@ struct SettingsPanel: View {
                     }
                 }
             }
+
+            Section("Model") {
+                LabeledContent {
+                    HStack {
+                        Slider(value: temperatureBinding, in: 0...2, step: 0.1)
+                            .frame(maxWidth: 160)
+                        Text(String(format: "%.1f", viewModel.temperature ?? AppDefaults.temperature))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .frame(width: 30)
+                    }
+                } label: {
+                    Text("Temperature")
+                }
+
+                LabeledContent("Max Tokens") {
+                    HStack(spacing: 6) {
+                        TextField("", text: maxTokensBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                        if viewModel.maxTokens == nil {
+                            Text("no limit")
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize()
+                        } else {
+                            Button(action: { viewModel.maxTokens = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 14))
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Reset to no limit")
+                        }
+                    }
+                }
+
+                Toggle("JSON Mode", isOn: $viewModel.jsonMode)
+            }
+
+            Section("Appearance") {
+                Picker("Theme", selection: $viewModel.appearance) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Section("Speech") {
+                Picker("Language", selection: $viewModel.ttsLanguage) {
+                    Text("English (US)").tag("en-US")
+                    Text("English (UK)").tag("en-GB")
+                    Text("German").tag("de-DE")
+                    Text("French").tag("fr-FR")
+                    Text("Spanish").tag("es-ES")
+                    Text("Italian").tag("it-IT")
+                    Text("Portuguese (BR)").tag("pt-BR")
+                    Text("Japanese").tag("ja-JP")
+                }
+            }
+
         }
         .formStyle(.grouped)
     }
