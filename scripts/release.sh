@@ -60,6 +60,15 @@ fi
 rm -rf "$VERIFY_DIR"
 print "==> Notarisation ticket verified."
 
+# ── Update softwareVersion in landing page JSON-LD ──────────────────────────
+print ""
+print "==> Updating site/index.html softwareVersion to $VERSION..."
+sed -i '' "s/\"softwareVersion\": \"[^\"]*\"/\"softwareVersion\": \"$VERSION\"/" "$ROOT_DIR/site/index.html"
+if ! git -C "$ROOT_DIR" diff --quiet site/index.html; then
+    git -C "$ROOT_DIR" add site/index.html
+    git -C "$ROOT_DIR" commit -m "chore: update softwareVersion to $VERSION in site/index.html"
+fi
+
 # ── Update docs screenshots (README assets) ─────────────────────────────────
 print ""
 print "==> Updating docs/ screenshots..."

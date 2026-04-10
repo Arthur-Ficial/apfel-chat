@@ -852,17 +852,28 @@ cd apfel-chat &amp;&amp; make install</pre>
 </footer>
 
 <script>
-// Resolve latest release version and point download button at the versioned zip
-fetch('https://api.github.com/repos/Arthur-Ficial/apfel-chat/releases/latest')
+// Resolve latest release version, versioned zip URL, and total all-time download count
+fetch('https://api.github.com/repos/Arthur-Ficial/apfel-chat/releases')
   .then(function(r) { return r.json(); })
-  .then(function(data) {
-    var tag = data.tag_name; // e.g. "v1.0.0"
+  .then(function(releases) {
+    if (!releases || !releases.length) return;
+    var latest = releases[0];
+    var tag = latest.tag_name; // e.g. "v1.0.5"
     if (!tag) return;
     var url = 'https://github.com/Arthur-Ficial/apfel-chat/releases/download/' + tag + '/apfel-chat-' + tag + '-macos-arm64.zip';
+    // Sum download counts for all zip assets across all releases
+    var total = 0;
+    releases.forEach(function(rel) {
+      (rel.assets || []).forEach(function(a) {
+        if (a.name.indexOf('.zip') !== -1) total += (a.download_count || 0);
+      });
+    });
     var btn = document.getElementById('download-btn');
     var label = document.getElementById('download-label');
     if (btn) btn.href = url;
-    if (label) label.textContent = 'Download ' + tag + ' (arm64)';
+    var text = 'Download ' + tag + ' (arm64)';
+    if (total > 0) text += '  \u00b7  ' + total.toLocaleString() + '\u00a0downloads';
+    if (label) label.textContent = text;
   })
   .catch(function() {}); // silently keep default href on error
 
