@@ -48,7 +48,7 @@ struct SettingsPanel: View {
                 Toggle(isOn: $viewModel.checkUpdatesOnLaunch) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Check for updates on launch")
-                        Text("Runs silently in the background. If you're offline, nothing is shown.")
+                        Text("If you're offline, nothing is shown.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

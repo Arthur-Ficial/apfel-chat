@@ -138,7 +138,7 @@ Source builds are not notarised. On first open macOS will show a Gatekeeper warn
 ## Quick start
 
 1. Open **apfel-chat** from `/Applications`
-2. On first launch, review the welcome screen and leave **Check for updates on launch** enabled if you want silent startup checks
+2. On first launch, review the welcome screen and leave **Check for updates on launch** enabled if you want automatic startup checks
 3. Click **New** in the sidebar to start a conversation
 4. Type a message and press **Return** — the reply streams in immediately
 5. **Drop an image** onto the chat window for instant visual analysis
@@ -171,7 +171,7 @@ Click the settings gear to adjust:
 - **Max tokens** — cap on response length
 - **Context window** — how many past tokens the model sees
 - **System prompt** — persistent instruction for every message in the conversation
-- **Check for updates on launch** — silent background release checks, on by default
+- **Check for updates on launch** — automatic release checks, on by default
 - **Show welcome on next start** — one-shot testing toggle for the onboarding screen
 
 ---
