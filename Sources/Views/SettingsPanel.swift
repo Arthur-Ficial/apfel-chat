@@ -45,6 +45,24 @@ struct SettingsPanel: View {
                         .monospacedDigit()
                 }
 
+                Toggle(isOn: $viewModel.checkUpdatesOnLaunch) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Check for updates on launch")
+                        Text("Runs silently in the background. If you're offline, nothing is shown.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Toggle(isOn: $viewModel.showWelcomeOnNextStart) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show welcome on next start")
+                        Text("One-shot toggle for testing. It resets after the welcome screen is shown and dismissed.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 switch viewModel.updateState {
                 case .idle:
                     Button("Check for Update") {
@@ -73,10 +91,13 @@ struct SettingsPanel: View {
                             if viewModel.isHomebrewInstall {
                                 Text("Runs brew upgrade automatically")
                                     .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Opens the latest release download page")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         Spacer()
-                        Button("Install") { viewModel.installUpdate() }
+                        Button(viewModel.updateInstallButtonTitle) { viewModel.installUpdate() }
                             .buttonStyle(.borderedProminent)
                     }
 

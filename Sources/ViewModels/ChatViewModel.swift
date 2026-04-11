@@ -219,7 +219,7 @@ final class ChatViewModel {
 
     func toggleAutoSpeak() {
         autoSpeak.toggle()
-        UserDefaults.standard.set(autoSpeak, forKey: "ac_autoSpeak")
+        AppUserDefaults.resolved().set(autoSpeak, forKey: "ac_autoSpeak")
     }
 
     func speakLastResponse() {

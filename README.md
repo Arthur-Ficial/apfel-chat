@@ -65,7 +65,7 @@ apfel-chat is a native macOS AI chat app powered entirely by Apple Intelligence 
 | **Token counter** | Live context usage + configurable context window cap |
 | **Auto-title** | Conversation title generated from first exchange |
 | **Model settings** | Temperature, max tokens, context window, system prompt |
-| **77 tests** | ViewModel, persistence, SSE parser, service layer, image analysis |
+| **93 tests** | ViewModel, persistence, SSE parser, control API, service layer, image analysis |
 
 ---
 
@@ -138,10 +138,11 @@ Source builds are not notarised. On first open macOS will show a Gatekeeper warn
 ## Quick start
 
 1. Open **apfel-chat** from `/Applications`
-2. Click **New** in the sidebar to start a conversation
-3. Type a message and press **Return** — the reply streams in immediately
-4. **Drop an image** onto the chat window for instant visual analysis
-5. Press the microphone button to speak instead of type
+2. On first launch, review the welcome screen and leave **Check for updates on launch** enabled if you want silent startup checks
+3. Click **New** in the sidebar to start a conversation
+4. Type a message and press **Return** — the reply streams in immediately
+5. **Drop an image** onto the chat window for instant visual analysis
+6. Press the microphone button to speak instead of type
 
 ---
 
@@ -170,6 +171,8 @@ Click the settings gear to adjust:
 - **Max tokens** — cap on response length
 - **Context window** — how many past tokens the model sees
 - **System prompt** — persistent instruction for every message in the conversation
+- **Check for updates on launch** — silent background release checks, on by default
+- **Show welcome on next start** — one-shot testing toggle for the onboarding screen
 
 ---
 
@@ -210,7 +213,7 @@ make dist            # build release zip + CLI tarball + checksums
 make release         # full release: test → build → sign → notarise → tag → push → GitHub release → site deploy
 ```
 
-Tests cover the SSE parser, chat service, image analysis, persistence, ViewModels, and server manager. All 77 pass on every release.
+Tests cover the SSE parser, chat service, image analysis, persistence, the control API, ViewModels, and server manager. All 93 pass on every release.
 
 ---
 
@@ -223,7 +226,7 @@ One command does everything:
 ```
 
 1. Checks you're on `main` with a clean tree and a valid Developer ID cert
-2. Runs `swift test` — 74 tests must pass
+2. Runs `swift test` — 93 tests must pass
 3. Builds release binary, assembles `.app`, embeds apfel helper
 4. Signs with `Developer ID Application: Franz Enzenhofer (7D2YX5DQ6M)` + entitlements
 5. Notarises with Apple and staples the ticket

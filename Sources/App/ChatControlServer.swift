@@ -61,83 +61,124 @@ class ChatControlServer {
             body = ""
         }
 
-        let response: String
+        let response = await dispatch(
+            method: method,
+            path: path,
+            queryString: queryString,
+            body: body,
+            chatVM: chatVM,
+            listVM: listVM,
+            settingsVM: settingsVM
+        )
+
+        let http = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: \(response.utf8.count)\r\n\r\n\(response)"
+        _ = http.withCString { write(client, $0, Int(strlen($0))) }
+        close(client)
+    }
+
+    static func dispatch(
+        method: String,
+        path: String,
+        queryString: String,
+        body: String,
+        chatVM: ChatViewModel,
+        listVM: ConversationListViewModel,
+        settingsVM: SettingsViewModel
+    ) async -> String {
         switch (method, path) {
 
         // === STATE ===
         case ("GET", "/state"):
-            response = await getState(chatVM, listVM: listVM)
+            return await getState(chatVM, listVM: listVM)
 
         // === CONVERSATIONS ===
         case ("GET", "/conversations"):
             if let id = parseQuery(queryString)["id"] {
-                response = await getMessages(chatVM, listVM: listVM, conversationId: id)
+                return await getMessages(chatVM, listVM: listVM, conversationId: id)
             } else {
-                response = await listConversations(listVM)
+                return await listConversations(listVM)
             }
         case ("POST", "/conversations"):
-            response = await createConversation(listVM)
+            return await createConversation(listVM)
         case ("POST", "/conversations/rename"):
-            response = await renameConversation(body, listVM: listVM)
+            return await renameConversation(body, listVM: listVM)
         case ("POST", "/conversations/delete"):
-            response = await deleteConversation(body, listVM: listVM)
+            return await deleteConversation(body, listVM: listVM)
         case ("POST", "/conversations/select"):
-            response = await selectConversation(body, chatVM: chatVM, listVM: listVM)
+            return await selectConversation(body, chatVM: chatVM, listVM: listVM)
 
         // === CHAT ===
         case ("POST", "/send"):
-            response = await sendMessage(body, chatVM: chatVM)
+            return await sendMessage(body, chatVM: chatVM)
         case ("POST", "/clear"):
             await MainActor.run { chatVM.clear() }
-            response = ok()
+            return ok()
         case ("POST", "/system-prompt"):
-            response = await setSystemPrompt(body, chatVM: chatVM)
+            return await setSystemPrompt(body, chatVM: chatVM)
 
         // === SETTINGS ===
         case ("GET", "/settings"):
-            response = await getSettings(settingsVM)
+            return await getSettings(settingsVM)
         case ("POST", "/settings"):
-            response = await updateSettings(body, settingsVM: settingsVM)
+            return await updateSettings(body, settingsVM: settingsVM)
         case ("POST", "/settings/show"):
             await MainActor.run { settingsVM.showSettings = true }
-            response = ok()
+            return ok()
         case ("POST", "/settings/hide"):
             await MainActor.run { settingsVM.showSettings = false }
-            response = ok()
+            return ok()
+
+        // === STARTUP ===
+        case ("GET", "/startup"):
+            return await getStartupStatus(settingsVM)
+        case ("GET", "/welcome"):
+            return await getStartupStatus(settingsVM)
+        case ("POST", "/startup/show"):
+            await MainActor.run { settingsVM.showStartupOverlayManually() }
+            return await getStartupStatus(settingsVM)
+        case ("POST", "/welcome/show"):
+            await MainActor.run { settingsVM.showStartupOverlayManually() }
+            return await getStartupStatus(settingsVM)
+        case ("POST", "/startup/dismiss"):
+            await settingsVM.dismissStartupOverlay()
+            return await getStartupStatus(settingsVM)
+        case ("POST", "/welcome/dismiss"):
+            await settingsVM.dismissStartupOverlay()
+            return await getStartupStatus(settingsVM)
 
         // === INPUT ===
         case ("POST", "/input"):
             guard let obj = parseJSON(body), let text = obj["text"] as? String else {
-                response = err("Need {\"text\": \"...\"}"); break
+                return err("Need {\"text\": \"...\"}")
             }
             await MainActor.run { chatVM.currentInput = text }
-            response = ok()
+            return ok()
         case ("GET", "/input"):
             let text = await MainActor.run { chatVM.currentInput }
-            response = jsonDict(["text": text])
+            return jsonDict(["text": text])
 
         // === MIC ===
         case ("POST", "/mic/toggle"):
             await chatVM.toggleListening()
             let listening = await MainActor.run { chatVM.speechInput?.isListening ?? false }
-            response = jsonDict(["status": "ok", "listening": listening])
+            return jsonDict(["status": "ok", "listening": listening])
         case ("GET", "/mic"):
             let listening = await MainActor.run { chatVM.speechInput?.isListening ?? false }
             let available = await MainActor.run { chatVM.speechInput != nil }
-            response = jsonDict(["listening": listening, "available": available])
+            return jsonDict(["listening": listening, "available": available])
 
         // === IMAGE ===
         case ("POST", "/attach"):
             await MainActor.run { chatVM.showFilePicker = true }
-            response = ok()
+            return ok()
         case ("POST", "/image"):
             guard let obj = parseJSON(body), let path = obj["path"] as? String else {
-                response = err("Need {\"path\": \"/path/to/image.png\"}"); break
+                return err("Need {\"path\": \"/path/to/image.png\"}")
             }
             let url = URL(fileURLWithPath: path)
             await chatVM.handleImageDrop(urls: [url])
             let count = await MainActor.run { chatVM.messages.count }
-            response = jsonDict(["status": "ok", "messages_count": count])
+            return jsonDict(["status": "ok", "messages_count": count])
 
         // === WINDOW ===
         case ("POST", "/window/focus"):
@@ -145,40 +186,45 @@ class ChatControlServer {
                 NSApplication.shared.activate(ignoringOtherApps: true)
                 NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
             }
-            response = ok()
+            return ok()
 
         // === SPEECH ===
         case ("POST", "/speak"):
-            response = await speak(body, chatVM: chatVM)
+            return await speak(body, chatVM: chatVM)
         case ("POST", "/stop-speaking"):
             await MainActor.run { chatVM.speechOutput?.stop() }
-            response = ok()
+            return ok()
         case ("GET", "/speech"):
             let speaking = await MainActor.run { chatVM.speechOutput?.isSpeaking ?? false }
             let autoSpeak = await MainActor.run { chatVM.autoSpeak }
-            response = jsonDict(["speaking": speaking, "auto_speak": autoSpeak])
+            return jsonDict(["speaking": speaking, "auto_speak": autoSpeak])
 
         // === UPDATE ===
         case ("GET", "/update"):
-            response = await getUpdateStatus(settingsVM)
+            return await getUpdateStatus(settingsVM)
         case ("POST", "/update/check"):
-            await settingsVM.checkForUpdate()
-            response = await getUpdateStatus(settingsVM)
+            await settingsVM.checkForUpdate(mode: .manual)
+            return await getUpdateStatus(settingsVM)
         case ("POST", "/update/install"):
             await MainActor.run { settingsVM.installUpdate() }
-            response = await getUpdateStatus(settingsVM)
+            return await getUpdateStatus(settingsVM)
         case ("POST", "/update/relaunch"):
-            response = jsonDict(["status": "relaunching"])
+            let response = jsonDict(["status": "relaunching"])
             Task { @MainActor in settingsVM.relaunch() }
+            return response
+
+        #if DEBUG
+        case ("POST", "/debug/update-scenario"):
+            return await setDebugUpdateScenario(body, settingsVM: settingsVM)
+        case ("POST", "/debug/reset-first-run"):
+            await settingsVM.debugResetFirstRun()
+            return await getStartupStatus(settingsVM)
+        #endif
 
         // === HELP ===
         default:
-            response = helpResponse()
+            return helpResponse()
         }
-
-        let http = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: \(response.utf8.count)\r\n\r\n\(response)"
-        _ = http.withCString { write(client, $0, Int(strlen($0))) }
-        close(client)
     }
 
     // MARK: - State
@@ -312,6 +358,8 @@ class ChatControlServer {
                 "tts_language": settingsVM.ttsLanguage,
                 "auto_speak": settingsVM.autoSpeak,
                 "appearance": settingsVM.appearance,
+                "check_updates_on_launch": settingsVM.checkUpdatesOnLaunch,
+                "show_welcome_on_next_start": settingsVM.showWelcomeOnNextStart,
             ])
         }
     }
@@ -330,9 +378,32 @@ class ChatControlServer {
             if let v = obj["tts_language"] as? String { settingsVM.ttsLanguage = v }
             if let v = obj["auto_speak"] as? Bool { settingsVM.autoSpeak = v }
             if let v = obj["appearance"] as? String, ["system","light","dark"].contains(v) { settingsVM.appearance = v }
+            if let v = obj["check_updates_on_launch"] as? Bool { settingsVM.checkUpdatesOnLaunch = v }
+            if let v = obj["show_welcome_on_next_start"] as? Bool { settingsVM.showWelcomeOnNextStart = v }
             settingsVM.save()
         }
         return ok()
+    }
+
+    private static func getStartupStatus(_ settingsVM: SettingsViewModel) async -> String {
+        await MainActor.run {
+            jsonDict([
+                "visible": settingsVM.showStartupOverlay,
+                "has_seen": settingsVM.hasSeenStartupOverlay,
+                "check_updates_on_launch": settingsVM.checkUpdatesOnLaunch,
+                "show_welcome_on_next_start": settingsVM.showWelcomeOnNextStart,
+                "current_version": settingsVM.currentVersion,
+                "last_seen_version": settingsVM.lastSeenWelcomeVersion,
+                "last_launched_version": settingsVM.lastLaunchedVersion as Any,
+                "title": StartupWelcomeContent.title,
+                "subtitle": StartupWelcomeContent.subtitle,
+                "summary": StartupWelcomeContent.summary,
+                "engine_summary": StartupWelcomeContent.engineSummary,
+                "bullets": StartupWelcomeContent.bullets,
+                "engine_url": StartupWelcomeContent.engineURL.absoluteString,
+                "app_url": StartupWelcomeContent.appURL.absoluteString,
+            ])
+        }
     }
 
     // MARK: - Speech
@@ -392,44 +463,80 @@ class ChatControlServer {
         }
     }
 
+    #if DEBUG
+    private static func setDebugUpdateScenario(_ body: String, settingsVM: SettingsViewModel) async -> String {
+        guard let obj = parseJSON(body) else { return err("Invalid JSON") }
+        await MainActor.run {
+            if obj["clear"] as? Bool == true {
+                settingsVM.debugUpdateScenario = nil
+                settingsVM.updateState = .idle
+                return
+            }
+            if let latestVersion = obj["latest_version"] as? String {
+                settingsVM.debugUpdateScenario = .latestVersion(latestVersion)
+                settingsVM.updateState = .idle
+                return
+            }
+            if let errorMessage = obj["error"] as? String {
+                settingsVM.debugUpdateScenario = .error(errorMessage)
+                settingsVM.updateState = .idle
+                return
+            }
+        }
+        return ok()
+    }
+    #endif
+
     // MARK: - Help
 
     nonisolated private static func helpResponse() -> String {
-        jsonDict([
+        var endpoints = [
+            "GET  /                       Help (this response)",
+            "GET  /state                  App state",
+            "GET  /conversations           List all conversations",
+            "GET  /conversations?id=X      Get messages for conversation X",
+            "POST /conversations           Create new conversation",
+            "POST /conversations/rename    Rename: {\"id\": \"...\", \"title\": \"...\"}",
+            "POST /conversations/delete    Delete: {\"id\": \"...\"}",
+            "POST /conversations/select    Select: {\"id\": \"...\"}",
+            "POST /send                   Send message: {\"message\": \"text\"}",
+            "POST /clear                  Clear chat",
+            "POST /system-prompt          Set system prompt: {\"prompt\": \"text\"}",
+            "GET  /settings               Get settings",
+            "POST /settings               Update settings: {\"temperature\": 0.7, \"appearance\": \"system|light|dark\", ...}",
+            "POST /settings/show          Open settings panel",
+            "POST /settings/hide          Close settings panel",
+            "GET  /startup                Get startup welcome screen state",
+            "GET  /welcome                Alias for /startup",
+            "POST /startup/show           Show startup welcome screen",
+            "POST /welcome/show           Alias for /startup/show",
+            "POST /startup/dismiss        Dismiss startup welcome screen",
+            "POST /welcome/dismiss        Alias for /startup/dismiss",
+            "POST /input                  Set input text: {\"text\": \"...\"}",
+            "GET  /input                  Get current input text",
+            "POST /mic/toggle             Toggle microphone listening",
+            "GET  /mic                    Mic status",
+            "POST /attach                 Open file picker",
+            "POST /image                  Analyze image: {\"path\": \"/path/to/img\"}",
+            "POST /window/focus           Bring window to front",
+            "POST /speak                  Speak text: {\"text\": \"...\"}",
+            "POST /stop-speaking          Stop TTS",
+            "GET  /speech                 Speech status",
+            "GET  /update                 Update status and latest version",
+            "POST /update/check           Check GitHub for latest release",
+            "POST /update/install         Install update (brew upgrade or opens download page)",
+            "POST /update/relaunch        Relaunch app to apply installed update",
+        ]
+        #if DEBUG
+        endpoints.append("POST /debug/update-scenario  Debug-only fake latest version or offline error")
+        endpoints.append("POST /debug/reset-first-run  Debug-only clear welcome seen marker")
+        #endif
+
+        return jsonDict([
             "name": "apfel-chat control API",
             "usage": "Start with: apfel-chat --api",
             "port": 11441,
-            "endpoints": [
-                "GET  /                       Help (this response)",
-                "GET  /state                  App state",
-                "GET  /conversations           List all conversations",
-                "GET  /conversations?id=X      Get messages for conversation X",
-                "POST /conversations           Create new conversation",
-                "POST /conversations/rename    Rename: {\"id\": \"...\", \"title\": \"...\"}",
-                "POST /conversations/delete    Delete: {\"id\": \"...\"}",
-                "POST /conversations/select    Select: {\"id\": \"...\"}",
-                "POST /send                   Send message: {\"message\": \"text\"}",
-                "POST /clear                  Clear chat",
-                "POST /system-prompt          Set system prompt: {\"prompt\": \"text\"}",
-                "GET  /settings               Get settings",
-                "POST /settings               Update settings: {\"temperature\": 0.7, \"appearance\": \"system|light|dark\", ...}",
-                "POST /settings/show          Open settings panel",
-                "POST /settings/hide          Close settings panel",
-                "POST /input                  Set input text: {\"text\": \"...\"}",
-                "GET  /input                  Get current input text",
-                "POST /mic/toggle             Toggle microphone listening",
-                "GET  /mic                    Mic status",
-                "POST /attach                 Open file picker",
-                "POST /image                  Analyze image: {\"path\": \"/path/to/img\"}",
-                "POST /window/focus           Bring window to front",
-                "POST /speak                  Speak text: {\"text\": \"...\"}",
-                "POST /stop-speaking          Stop TTS",
-                "GET  /speech                 Speech status",
-                "GET  /update                 Update status and latest version",
-                "POST /update/check           Check GitHub for latest release",
-                "POST /update/install         Install update (brew upgrade or opens download page)",
-                "POST /update/relaunch        Relaunch app to apply installed update",
-            ]
+            "endpoints": endpoints
         ])
     }
 

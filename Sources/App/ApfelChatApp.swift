@@ -34,6 +34,9 @@ struct ApfelChatApp: App {
                 }
             }
             .frame(minWidth: 700, minHeight: 500)
+            .sheet(isPresented: $settingsVM.showStartupOverlay) {
+                StartupOverlayView(viewModel: settingsVM)
+            }
             .task {
                 guard !didStart else { return }
                 didStart = true
@@ -146,6 +149,8 @@ struct ApfelChatApp: App {
                 ctrl.start()
                 self.controlServer = ctrl
             }
+
+            await settingsVM.prepareForAppLaunch()
         } catch {
             startupError = "Database error: \(error.localizedDescription)"
         }

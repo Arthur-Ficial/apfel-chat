@@ -80,8 +80,9 @@ final class ServerManager {
     }
 
     nonisolated static func buildArguments(port: Int) -> [String] {
-        let isPermissive = UserDefaults.standard.object(forKey: "ac_permissive") == nil
-            || UserDefaults.standard.bool(forKey: "ac_permissive")
+        let defaults = AppUserDefaults.resolved()
+        let isPermissive = defaults.object(forKey: "ac_permissive") == nil
+            || defaults.bool(forKey: "ac_permissive")
         var args = ["--serve", "--port", "\(port)", "--cors"]
         if isPermissive { args.append("--permissive") }
         return args
