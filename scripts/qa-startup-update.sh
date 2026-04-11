@@ -11,11 +11,32 @@ SUITE_B="${APFEL_CHAT_DEFAULTS_SUITE_B:-qa-startup-b-$$}"
 LOG_DIR="$(mktemp -d)"
 APP_PID=""
 
-cleanup() {
-    if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
-        kill "$APP_PID" 2>/dev/null || true
-        wait "$APP_PID" 2>/dev/null || true
+api_listener_pid() {
+    lsof -ti "tcp:${API_PORT}" -sTCP:LISTEN 2>/dev/null | head -n 1
+}
+
+app_api_pids() {
+    pgrep -f "${APP_EXEC} --api" || true
+}
+
+stop_matching_api_processes() {
+    local pid
+
+    for pid in ${(f)"$(app_api_pids)"}; do
+        [[ -n "$pid" ]] || continue
+        kill "$pid" 2>/dev/null || true
+    done
+
+    pid="$(api_listener_pid || true)"
+    if [[ -n "$pid" ]]; then
+        kill "$pid" 2>/dev/null || true
     fi
+
+    sleep 0.5
+}
+
+cleanup() {
+    stop_matching_api_processes
     defaults delete "$SUITE_A" >/dev/null 2>&1 || true
     defaults delete "$SUITE_B" >/dev/null 2>&1 || true
     rm -rf "$LOG_DIR"
@@ -77,22 +98,21 @@ wait_for_api() {
 launch_app() {
     local suite="$1"
     [[ -x "$APP_EXEC" ]] || fail "App executable not found: $APP_EXEC"
+    stop_matching_api_processes
     if lsof -i "tcp:${API_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-        fail "Port ${API_PORT} is already in use. Quit any existing apfel-chat --api process first."
+        fail "Port ${API_PORT} is still in use after cleanup"
     fi
     APFEL_CHAT_DEFAULTS_SUITE="$suite" open -n "$APP_PATH" --args --api
     wait_for_api
-    APP_PID="$(pgrep -f "${APP_EXEC} --api" | head -n 1 || true)"
+    APP_PID="$(api_listener_pid || true)"
 }
 
 stop_app() {
-    [[ -n "$APP_PID" ]] || return 0
-    if kill -0 "$APP_PID" 2>/dev/null; then
+    if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
         kill "$APP_PID" 2>/dev/null || true
-        wait "$APP_PID" 2>/dev/null || true
     fi
+    stop_matching_api_processes
     APP_PID=""
-    sleep 0.5
 }
 
 wait_for_update_state() {
