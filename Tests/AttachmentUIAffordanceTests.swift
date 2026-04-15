@@ -39,15 +39,15 @@ struct AttachmentUIAffordanceTests {
         )
     }
 
-    @Test("InputBar references install hint text when auge is missing")
-    func installHintPresent() {
-        // We expect the install hint to mention `brew install` and `auge`
-        // so users know exactly how to get the feature.
-        let hasHint = Self.inputBar.contains("brew install")
-            && Self.inputBar.contains("auge")
+    @Test("InputBar surfaces a clear recovery hint if the auge helper is ever unavailable")
+    func recoveryHintPresent() {
+        // auge now ships bundled with the .app — but the nil path is still
+        // defensive (e.g. corrupt bundle). The hint must tell the user what
+        // to do instead of silently doing nothing.
         #expect(
-            hasHint,
-            "InputBar must reference how to install auge (brew install Arthur-Ficial/tap/auge) so users know how to unlock image analysis"
+            Self.inputBar.contains("Reinstall apfel-chat")
+            || Self.inputBar.contains("reinstall apfel-chat"),
+            "InputBar must tell the user what to do when the bundled auge helper is unavailable"
         )
     }
 }

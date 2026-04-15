@@ -228,6 +228,17 @@ final class ChatViewModel {
         tts.speak(lastAssistant.content, languageCode: ttsLanguage)
     }
 
+    /// Speak or stop a specific message's content. If the synthesizer is
+    /// already speaking, stop it; otherwise start reading this message.
+    func toggleSpeak(for message: Message) {
+        guard let tts = speechOutput else { return }
+        if tts.isSpeaking {
+            tts.stop()
+        } else {
+            tts.speak(message.content, languageCode: ttsLanguage)
+        }
+    }
+
     // MARK: - Image Analysis
 
     func handleImageDrop(urls: [URL]) async {

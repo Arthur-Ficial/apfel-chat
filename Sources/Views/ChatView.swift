@@ -132,7 +132,8 @@ struct ChatView: View {
 
                         MessageBubble(
                             message: msg,
-                            isOutOfContext: viewModel.outOfContextMessageIds.contains(msg.id)
+                            isOutOfContext: viewModel.outOfContextMessageIds.contains(msg.id),
+                            onSpeak: viewModel.speechOutput == nil ? nil : { viewModel.toggleSpeak(for: msg) }
                         )
                         .equatable()
                         .id(msg.id)

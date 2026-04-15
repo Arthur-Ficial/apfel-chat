@@ -3,10 +3,14 @@ import SwiftUI
 struct MessageBubble: View {
     let message: Message
     var isOutOfContext: Bool = false
+    /// Optional speak action. When non-nil and the message is a finished
+    /// assistant response, a speaker icon is rendered next to Copy.
+    var onSpeak: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCopied = false
     @State private var copyHover = false
+    @State private var speakHover = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
@@ -45,6 +49,17 @@ struct MessageBubble: View {
                         }
                         .buttonStyle(.borderless)
                         .onHover { copyHover = $0 }
+
+                        if message.role == .assistant, let onSpeak {
+                            Button(action: onSpeak) {
+                                Image(systemName: "speaker.wave.2")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(speakHover ? .blue : .secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .onHover { speakHover = $0 }
+                            .help("Speak this response")
+                        }
                     }
                 }
                 .padding(.horizontal, 4)
@@ -148,6 +163,8 @@ struct MessageBubble: View {
 
 extension MessageBubble: Equatable {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        // onSpeak closures aren't equatable, but their presence/absence is
+        // stable across re-renders for a given message, so we ignore them.
         lhs.message == rhs.message && lhs.isOutOfContext == rhs.isOutOfContext
     }
 }

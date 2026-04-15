@@ -48,7 +48,7 @@ struct InputBar: View {
 
                 Button(action: {
                     if viewModel.augeService == nil {
-                        viewModel.errorMessage = "Image analysis requires auge. Install it with: brew install Arthur-Ficial/tap/auge"
+                        viewModel.errorMessage = "Image analysis helper (auge) is unavailable. Reinstall apfel-chat — the helper ships bundled with the app."
                     } else {
                         viewModel.showFilePicker = true
                     }
@@ -63,7 +63,7 @@ struct InputBar: View {
                 .buttonStyle(.borderless)
                 .disabled(viewModel.isAnalyzingImage)
                 .help(viewModel.augeService == nil
-                      ? "Install auge to attach images (brew install Arthur-Ficial/tap/auge)"
+                      ? "Image helper unavailable — reinstall apfel-chat"
                       : "Attach image")
                 .fileImporter(
                     isPresented: $viewModel.showFilePicker,
