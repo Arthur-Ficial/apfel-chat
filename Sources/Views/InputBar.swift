@@ -46,26 +46,32 @@ struct InputBar: View {
                     .help(viewModel.speechInput?.isListening == true ? "Stop listening" : "Voice input")
                 }
 
-                if viewModel.augeService != nil {
-                    Button(action: { viewModel.showFilePicker = true }) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 16))
-                            .foregroundStyle(viewModel.isAnalyzingImage ? .blue : .gray)
-                            .frame(width: 36, height: 36)
-                            .background(Color(nsColor: .controlBackgroundColor))
-                            .clipShape(Circle())
+                Button(action: {
+                    if viewModel.augeService == nil {
+                        viewModel.errorMessage = "Image analysis requires auge. Install it with: brew install Arthur-Ficial/tap/auge"
+                    } else {
+                        viewModel.showFilePicker = true
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(viewModel.isAnalyzingImage)
-                    .help("Attach image")
-                    .fileImporter(
-                        isPresented: $viewModel.showFilePicker,
-                        allowedContentTypes: [.image, .pdf],
-                        allowsMultipleSelection: false
-                    ) { result in
-                        if case .success(let urls) = result, let url = urls.first {
-                            Task { await viewModel.handleImageDrop(urls: [url]) }
-                        }
+                }) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 16))
+                        .foregroundStyle(viewModel.isAnalyzingImage ? .blue : (viewModel.augeService == nil ? .gray.opacity(0.6) : .gray))
+                        .frame(width: 36, height: 36)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isAnalyzingImage)
+                .help(viewModel.augeService == nil
+                      ? "Install auge to attach images (brew install Arthur-Ficial/tap/auge)"
+                      : "Attach image")
+                .fileImporter(
+                    isPresented: $viewModel.showFilePicker,
+                    allowedContentTypes: [.image, .pdf],
+                    allowsMultipleSelection: false
+                ) { result in
+                    if case .success(let urls) = result, let url = urls.first {
+                        Task { await viewModel.handleImageDrop(urls: [url]) }
                     }
                 }
 
