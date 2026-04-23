@@ -52,7 +52,17 @@ final class ConversationListViewModel {
             conversations.removeAll { $0.id == id }
             searchResults.removeAll { $0.id == id }
             if selectedId == id {
-                selectedId = conversations.first?.id
+                if conversations.isEmpty {
+                    // Mirror startup: never leave the chat pane stranded on a deleted conversation.
+                    if let conv = try? await persistence.createConversation(title: "New Chat") {
+                        conversations.insert(conv, at: 0)
+                        selectedId = conv.id
+                    } else {
+                        selectedId = nil
+                    }
+                } else {
+                    selectedId = conversations.first?.id
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
