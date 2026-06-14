@@ -1,5 +1,9 @@
 # apfel-chat - Project Instructions
 
+## The Golden Goal
+
+apfel-chat is the consumer-grade native macOS chat app for on-device AI - a private, fast, no-API-keys ChatGPT alternative that runs entirely on your Mac via apfel. The one job is a polished, lightweight everyday chat client: multi-conversation history, streaming markdown, speech in and out, and Apple Vision image reading, with nothing ever leaving the machine. It IS a finished end-user product (signed, notarised, App-Store-shaped SwiftUI). It is NOT the apfel CLI/server (that is the engine it spawns), NOT the apfel-gui debug tool, and NOT a cloud client - no network inference, no API keys, no telemetry, ever. Every feature is scored against "does this make the local chat experience faster, more private, or more pleasant"; anything else is scope creep.
+
 ## Purpose
 
 Super-fast, lightweight, 100% local chat client for on-device AI via apfel.
