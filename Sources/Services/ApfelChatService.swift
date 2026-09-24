@@ -52,7 +52,7 @@ final class ApfelChatService: ChatService, @unchecked Sendable {
         let url = URL(string: "/v1/chat/completions", relativeTo: baseURL)!
 
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     var urlRequest = URLRequest(url: url)
                     urlRequest.httpMethod = "POST"
@@ -74,8 +74,18 @@ final class ApfelChatService: ChatService, @unchecked Sendable {
                         return
                     }
 
+                    var sawDone = false
                     for try await line in bytes.lines {
-                        if line.hasPrefix("data: [DONE]") { break }
+                        if sawDone { continue }
+                        if line.hasPrefix("data: [DONE]") {
+                            // The answer is complete for the consumer. Keep draining to EOF
+                            // instead of breaking out: dropping the byte stream mid-body makes
+                            // URLSession cancel the task and log NSURLErrorCancelled (-999)
+                            // for every successful response (#7).
+                            sawDone = true
+                            continuation.finish()
+                            continue
+                        }
                         if let error = SSEParser.parseError(line: line) {
                             continuation.finish(
                                 throwing: ChatServiceError.streamError(
@@ -88,9 +98,26 @@ final class ApfelChatService: ChatService, @unchecked Sendable {
                             continuation.yield(delta)
                         }
                     }
-                    continuation.finish()
+
+                    if !sawDone {
+                        // The body ended without the [DONE] terminator: whatever was
+                        // streamed so far is partial. Say so instead of presenting it
+                        // as a finished answer.
+                        continuation.finish(
+                            throwing: ChatServiceError.streamError(
+                                "The response ended before it was complete. Try again."
+                            )
+                        )
+                    }
                 } catch is CancellationError {
+                    // The consumer stopped listening; nothing left to report to.
                     continuation.finish()
+                } catch let error as URLError where error.code == .cancelled {
+                    continuation.finish(
+                        throwing: ChatServiceError.streamError(
+                            "The response stream was cancelled before it finished."
+                        )
+                    )
                 } catch {
                     continuation.finish(
                         throwing: ChatServiceError.connectionFailed(
@@ -98,6 +125,12 @@ final class ApfelChatService: ChatService, @unchecked Sendable {
                         )
                     )
                 }
+            }
+            // Only a consumer-side cancellation (Stop button, switching conversation)
+            // tears down the request. A normal finish must NOT cancel, or the drain
+            // above would trigger the very -999 it exists to avoid.
+            continuation.onTermination = { termination in
+                if case .cancelled = termination { task.cancel() }
             }
         }
     }
